@@ -1,0 +1,128 @@
+#!/bin/bash -l
+
+# Set SCC project
+#$ -P llamagrp
+
+# Specify hard time limit for the job.
+#   The job will be aborted if it runs longer than this time.
+#   The default time is 12 hours
+#$ -l h_rt=6:00:00
+
+# Send an email when the job finishes or if it is aborted (by default no email is sent).
+####$ -m ea
+
+# Give job a name
+#$ -N behavioral_local_global_put
+
+# Combine output and error files into a single file
+#$ -j y
+#$ -o log
+
+# request 6 cores, each with 6 GB RAM at least
+#$ -pe omp 4
+###$ -l mem_per_core=6G
+
+# request 1 GPU
+#$ -l gpus=1
+#$ -l gpu_c=8.5
+#$ -l gpu_memory=47G
+
+# Submit an array job with 5 tasks
+#$ -t 1
+
+# Keep track of information related to the current job
+echo "=========================================================="
+echo "Start date : $(date)"
+echo "Job name : $JOB_NAME"
+echo "Job ID : $JOB_ID  $SGE_TASK_ID"
+echo "=========================================================="
+nvidia-smi
+
+module load cuda/11.8
+module load torch/2.1
+module load miniconda/23.11.0
+conda activate <your_env>
+
+# API keys and caching dirs
+export HF_HOME="<your hf home>"
+export HF_TOKEN="<your hf token>"
+export NDIF_APIKEY="<your NDIF apikey>" # only if you are running large model on remote
+ROOT=$(pwd)
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+
+index=$(($SGE_TASK_ID-1))
+
+#MODEL="google/gemma-2-2b"  # google/gemma-2-2b codellama/CodeLlama-7b-hf
+#MODEL_NAME="gemma-2-2b"
+
+MODEL="codellama/CodeLlama-13b-hf"  # google/gemma-2-2b codellama/CodeLlama-7b-hf
+MODEL_NAME="codellama-13b"
+
+
+cd behavioral_experiments
+# CUDA_LAUNCH_BLOCKING=1 TORCH_USE_CUDA_DSA=true
+
+# first let's look at query op logit difference caused by remove
+python run_behavioral_testing.py \
+  --model $MODEL \
+  --datafile "${ROOT}/data/boxes_altAlways_default_maxop12_5k/train-t5.jsonl" \
+  --batch_size 8 \
+  --num_samples 500 \
+  --ops_order "" \
+  --query_ops_order "" \
+  --success_filter True \
+  --counterfactual_format add_single_op_put_query \
+  --metric logit_diff \
+  --output_dir "${ROOT}/outputs/behavioral_global_local_put/${MODEL_NAME}/query.json" \
+  --save_data \
+  --load_in_8bit \
+  --compute_other_object_logit_diffs
+
+python run_behavioral_testing.py \
+  --model $MODEL \
+  --datafile "${ROOT}/data/boxes_altAlways_default_maxop12_5k/train-t5.jsonl" \
+  --batch_size 8 \
+  --num_samples 500 \
+  --ops_order "" \
+  --query_ops_order "" \
+  --success_filter True \
+  --counterfactual_format add_single_op_put_irrelevant \
+  --metric logit_diff \
+  --output_dir "${ROOT}/outputs/behavioral_global_local_put/${MODEL_NAME}/irrelevant.json" \
+  --save_data \
+  --load_in_8bit \
+  --compute_other_object_logit_diffs
+
+# 2-shot
+python run_behavioral_testing.py \
+  --model $MODEL \
+  --datafile "${ROOT}/data/boxes_altAlways_default_maxop12_5k/train-t5.jsonl" \
+  --batch_size 8 \
+  --num_samples 500 \
+  --ops_order "" \
+  --query_ops_order "" \
+  --success_filter True \
+  --counterfactual_format add_single_op_put_query \
+  --metric logit_diff \
+  --output_dir "${ROOT}/outputs/behavioral_global_local_put/${MODEL_NAME}_PROMPT_ALTFORM/query.json" \
+  --save_data \
+  --load_in_8bit \
+  --compute_other_object_logit_diffs \
+  --prompt_format "PROMPT_ALTFORM" \
+
+python run_behavioral_testing.py \
+  --model $MODEL \
+  --datafile "${ROOT}/data/boxes_altAlways_default_maxop12_5k/train-t5.jsonl" \
+  --batch_size 8 \
+  --num_samples 500 \
+  --ops_order "" \
+  --query_ops_order "" \
+  --success_filter True \
+  --counterfactual_format add_single_op_put_irrelevant \
+  --metric logit_diff \
+  --output_dir "${ROOT}/outputs/behavioral_global_local_put/${MODEL_NAME}_PROMPT_ALTFORM/irrelevant.json" \
+  --save_data \
+  --load_in_8bit \
+  --compute_other_object_logit_diffs \
+  --prompt_format "PROMPT_ALTFORM" \
+
