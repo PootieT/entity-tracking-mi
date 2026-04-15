@@ -1,6 +1,7 @@
 import os
 import pdb
 import csv
+import glob
 import pickle
 import argparse
 
@@ -44,7 +45,7 @@ _INPUT_DIMENSIONS = {
 }
 
 
-PROMPT = """Given the description after "Description:", write a true statement about all boxes and their contents according to the description after "Statement:".
+PROMPT = """Given the description after "Description:", write a true statement about a boxes and its contents according to the description after "Statement:".
 
 Description: Box 0 contains the car, Box 1 contains the cross, Box 2 contains the bag and the machine, Box 3 contains the paper and the string, Box 4 contains the bill, Box 5 contains the apple and the cash and the glass, Box 6 contains the bottle and the map.
 Statement: Box 3 contains the paper and the string.
@@ -240,8 +241,6 @@ def main(args):
     
     # loader_train, loader_test = None, None
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    # args.exclude_empty = True
-    # args.model_representation_path = "/Users/zhaoqiao/Projects/NLP/entity-tracking/NDIF_PlayGround/representations/Llama3-405B/"
     folder_name = f"probing/state"
 
     if args.twolayer:
@@ -265,10 +264,8 @@ def main(args):
     # Load data
     data_type = "t5" if args.model_type == "t5" else "gpt"
     dataset_path_train = os.path.join(args.dataset_path, f'train-subsample-states-{data_type}.jsonl')
-    # dataset_path_train = os.path.join(args.dataset_path, f'train-{data_type}.jsonl')
     print("Train dataset:", dataset_path_train)
     dataset_path_test = os.path.join(args.dataset_path, f'test-subsample-states-{data_type}.jsonl')
-    # dataset_path_test = os.path.join(args.dataset_path, f'test-{data_type}.jsonl')
 
     train_df = pd.read_json(dataset_path_train, orient='records', lines=True)
     test_df = pd.read_json(dataset_path_test, orient='records', lines=True)
@@ -310,8 +307,6 @@ def main(args):
          prefix_ids = torch.stack([item['prefix_ids'] for item in batch])
          target_ids = torch.stack([item['target_ids'] for item in batch])
          prefix_attn_masks = torch.stack([item['prefix_attn_masks'] for item in batch])
-         # 'prefix_text': prefix_text,
-         #     'target_text': target_text,
 
          return [prefix_text, target_text, prefix_ids, target_ids, prefix_attn_masks]
 
@@ -376,11 +371,8 @@ def main(args):
 
              # save the representation for the current batch
              if args.save_model_representation:
-                 # layer_tensors = list(map(lambda x: x[0].cpu(), _act_all_container_train.value))
-                 # stacked_tensor = torch.cat([tensor.unsqueeze(0) for tensor in layer_tensors], dim=0)[:,:,-1,:].permute(1,0,2)
                  with open(batch_representation_path, "wb") as rep_f:
                      pickle.dump(_act_all_container_train, rep_f)
-                     # pickle.dump(stacked_tensor, rep_f)
                      _act_all_container_train.clear()
              print(f"Batch {idx} processed, saved to {batch_representation_path}")
 

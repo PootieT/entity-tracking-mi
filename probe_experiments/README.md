@@ -3,28 +3,45 @@ probing experiments to understand entity tracking task
 
 # Local / Global / Mention Probes  
 
+To cache model residual streams (last token):
+```commandline
+./probe_experiments/cache_representation_codellama13b.qsub  # using 2GPUs local
+./probe_experiments/cache_representation_llama3_70B.qsub  # using NDIF
+```
 
+To train Local Probes
+
+```commandline
+
+```
+
+To train Global probes
+
+```commandline
+
+```
+
+To train mention probes
+
+```commandline
+
+```
 
 # Prior State Probes
 
 ### Script
 To cache hidden states
 ```commandline
-./scripts/cache_codellama13b_probe_the_activations.qsub 
+./scripts/cache_ternary_probe_activations_codellama13b.qsub  # local 2GPU
+./scripts/cache_ternary_probe_activations_llama3_70B # NDIF remote
 ```
-(I don't have caching script for 405B, Qiao has it)
+
 To train probe
 ```commandline
-./scripts/load_and_train_probe_llama3_405B.qsub  # for llama405b
+./scripts/load_and_train_probe_llama3_70B.qsub  # for llama405b
 ./scripts/load_and_train_probe_codellama13b.qsub  # for codellama 13b
 ./scripts/load_and_train_probe_codellama13b_moveContent.qsub  # for codellama13b with moveContent split
 ```
-### Data
-- `data/boxes-dataset-v1/few-shot_boxes_nso_exp2_max3/{train/test}-subsample-states-gpt.jsonl`
-- `data/boxes-dataset-v1/few-shot_boxes_nso_exp2_max3_move_content/{train/test}-subsample-states-gpt.jsonl` (for move content one)
-
-(using subsample because it's enough)
-
 
 
 

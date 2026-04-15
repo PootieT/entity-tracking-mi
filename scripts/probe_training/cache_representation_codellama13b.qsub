@@ -1,0 +1,39 @@
+#!/bin/bash -l
+#$ -P llamagrp
+#$ -N prob_codellama13b_save
+#$ -l gpus=2
+#$ -l gpu_c=8.0
+#$ -l gpu_memory=47G
+#$ -l h_rt=6:00:00
+#$ -o log
+#$ -j y
+###$ -m ea
+#$ -M zilutang@bu.edu
+#$ -t 1-1
+
+module load cuda/11.8
+module load torch/2.1
+module load miniconda/23.11.0
+conda activate <your_env>
+
+# API keys and caching dirs
+export HF_HOME="<your hf home>"
+ROOT=$(pwd)/probe_experiments
+
+
+torchrun --nproc-per-node 2 train_probe.py \
+    --dataset_path $ROOT/../data/boxes_altAlways_default_maxop12_5k \
+    --dataset_subset \
+    --model_path codellama/CodeLlama-13b-hf \
+    --layer 40 \
+    --epo 64 \
+    --model_type CodeLlama-13b-hf \
+    --exclude_empty \
+    --binary_probe \
+    --condition_on the \
+    --save_model_representation \
+    --model_representation_path $ROOT/model_cache/codellama13b_the \
+    --distributed \
+    --checkpoint_root $ROOT/probe_checkpoint/codellama-13b
+
+

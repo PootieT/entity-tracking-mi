@@ -1,0 +1,57 @@
+#!/bin/bash -l
+#$ -P llamagrp
+#$ -N load_and_train_phrase_probe_number_all_codellama13b
+#$ -l gpus=1
+#$ -l gpu_c=8.0
+#$ -l gpu_memory=47G
+#$ -pe omp 8
+##### below lines for full training data (large CPU mem)
+#####$ -l mem_per_core=16G
+#$ -l h_rt=24:00:00
+#$ -o log
+#$ -j y
+###$ -m ea
+#$ -M zilutang@bu.edu
+#$ -t 1
+
+module load cuda/11.8
+module load torch/2.1
+module load miniconda/23.11.0
+conda activate <your_env>
+
+# API keys and caching dirs
+export HF_HOME="<your hf home>"
+ROOT=$(pwd)/probe_experiments
+
+#export CUDA_LAUNCH_BLOCKING=1
+index=$(($SGE_TASK_ID-1))
+
+MAIN_PORT=$(( RANDOM % (50000 - 30000 + 1 ) + 30000 ))
+
+# object_all_local: ternary probe conditioning on the object token
+# number_all_local: ternary probe conditioning on the Box ID token
+
+CONDITION=object_all_local  #number_all_local
+
+for LAYER in {1..40}
+do
+  echo "Phrase probe conditioning on ${CONDITION}! Probing layer ${LAYER}"
+
+  # train on the full set, test on subset (need 8 cores to load h5 loader faster)
+  python probe_experiments/train_probe.py \
+    --dataset_path $ROOT/../data/boxes_altAlways_default_maxop12_5k \
+    --dataset_subset_test_only \
+    --object_vocabulary_file data/llama_friendly_objects.csv \
+    --model_representation_path $ROOT/model_cache/boxes_data_altForm_default/codellama13b_object_all \
+    --checkpoint_root $ROOT/probe_checkpoints/boxes_data_altForm_default/codellama-13b \
+    --load_model_representation \
+    --model_type CodeLlama-13b-hf \
+    --model_path codellama/CodeLlama-13b-hf \
+    --layer $LAYER \
+    --condition_on $CONDITION \
+    --epo 5 \
+    --lr 1e-4 \
+    --dataset_loader_num_workers 8
+done
+
+

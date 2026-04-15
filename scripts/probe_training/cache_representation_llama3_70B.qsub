@@ -1,0 +1,37 @@
+#!/bin/bash -l
+#$ -P llamagrp
+#$ -N cache_representation_llama31-70B
+####$ -l gpus=1
+####$ -l gpu_c=6.0
+#####$ -l gpu_type=V100
+#####$ -l gpu_memory=47G
+#$ -l h_rt=12:00:00
+#$ -o log
+#$ -j y
+###$ -m ea
+#$ -M zilutang@bu.edu
+#$ -t 1
+
+module load cuda/11.8
+module load torch/2.1
+module load miniconda/23.11.0
+conda activate <your_env>
+
+# API keys and caching dirs
+export HF_HOME="<your hf home>"
+export HF_TOKEN="<your hf token>"
+export NDIF_APIKEY="<your NDIF apikey>" # only if you are running large model on remote
+ROOT=$(pwd)/probe_experiments
+
+python probe_experiments/cache_ndif_representations.py \
+    --model_type llama \
+    --model_name meta-llama/Meta-Llama-3.1-70B \
+    --dataset_path $ROOT/../data/boxes_altAlways_default_maxop12_5k \
+    --object_vocabulary_file $ROOT/../data/objects/objects_with_bnc_frequency.csv \
+    --binary \
+    --exclude_empty \
+    --condition_on the \
+    --save_model_representation \
+    --model_representation_path $ROOT/model_cache/llama3.1-70b \
+    --hf_token $HF_TOKEN \
+    --ndif_apikey $NDIF_APIKEY
