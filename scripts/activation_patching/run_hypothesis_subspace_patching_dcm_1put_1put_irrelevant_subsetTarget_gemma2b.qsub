@@ -56,7 +56,7 @@ MODEL="google/gemma-2-2b"
 MODEL_NAME="gemma-2-2b"
 
 
-cd nnsight_patching_experiment
+cd nnsight_patching_experiments
 
 CTF=dcm_pos_phrase_ctf_op #dcm_obj
 #CACHE_DIR="${ROOT}/outputs/nnsight_patch_1put_1put_irrelevant/${MODEL_NAME}"

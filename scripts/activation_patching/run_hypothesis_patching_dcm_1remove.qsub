@@ -57,7 +57,7 @@ MODEL="codellama/CodeLlama-13b-hf"
 MODEL_NAME="codellama-13b "
 
 
-cd nnsight_patching_experiment
+cd nnsight_patching_experiments
 
 # dcm_remove_second_oid, num_query_obj=1 -> unexpected no good
 

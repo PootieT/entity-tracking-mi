@@ -55,7 +55,7 @@ index=$(($SGE_TASK_ID-1))
 MODEL="google/gemma-2-2b"
 MODEL_NAME="gemma-2-2b"
 
-cd nnsight_patching_experiment
+cd nnsight_patching_experiments
 
 CUDA_LAUNCH_BLOCKING=1 TORCH_USE_CUDA_DSA=true python run_path_patching.py \
   --model $MODEL \

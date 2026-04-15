@@ -1,0 +1,140 @@
+#!/bin/bash -l
+#$ -P llamagrp
+#$ -N inference_default_gemma2b
+#$ -l gpus=1
+#$ -l gpu_c=8.0
+#####$ -l gpu_type=V100
+#$ -l gpu_memory=47G
+#$ -l h_rt=12:00:00
+#$ -o log
+#$ -j y
+###$ -m ea
+#$ -M zilutang@bu.edu
+#$ -t 4-5
+
+module load cuda/11.8   # 11.2
+module load torch/2.1  # using installed 2.2.1 instead
+module load miniconda/23.11.0
+conda activate /projectnb/mcnet/peter/entity-tracking-gemma/eap_env
+export TRANSFORMERS_CACHE=/projectnb2/llamagrp/peter/huggingface_cache/
+export HF_DATASETS_CACHE=/projectnb2/llamagrp/peter/huggingface_cache/
+export WANDB_PROJECT=entity-tracking-probing
+export ROOT=/projectnb/mcnet/peter/entity-tracking-probing
+
+index=$(($SGE_TASK_ID-1))
+
+ROOT=/projectnb/mcnet/peter/entity-tracking-probing
+ALTROOT=/projectnb/mcnet/peter/entity-tracking-gemma
+
+#DATASET_NAMES=(
+#boxes_altAlways_1remove_noEmpty \
+#boxes_altAlways_1move_moreObj_noEmpty \
+#boxes_altAlways_1put_1fixObj \
+#boxes_altAlways_1move_noEmpty \
+#boxes_altAlways_1put_moreObj_noEmpty \
+#boxes_altAlways_default_maxop12_5k \
+#)
+#DATASET_NAME=${DATASET_NAMES[$index]}
+DATASET_NAME=boxes_altAlways_default_maxop12_5k
+
+#SPLIT_NAMES=(
+#"test" \
+#train-subsample-opmove_0-qopmove_0 \
+#train \
+#train-subsample-opmove_1-qopmove_1 \
+#train-subsample-states \
+#"test" \
+#)
+#SPLIT_NAME=${SPLIT_NAMES[$index]}
+SPLIT_NAME=test-subsample-states
+
+PROMPT_FORMATS=(
+INSTRUCTION \
+PROMPT_ALTFORM \
+PROMPT_ALLBOX_ALTFORM \
+INSTRUCTION_SINGULAR \
+PROMPT_ALTFORM_SINGULAR \
+)
+PROMPT_FORMAT=${PROMPT_FORMATS[$index]}
+#PROMPT_FORMAT=PROMPT_ALLBOX_ALTFORM # INSTRUCTION PROMPT_ALTFORM PROMPT_ALLBOX_ALTFORM
+
+# Codellama-13b
+python inference.py \
+    --data_path $ALTROOT/data/${DATASET_NAME}/${SPLIT_NAME}-gpt.jsonl \
+    --object_vocabulary_file data/llama_friendly_objects.csv \
+    --model_dir codellama/CodeLlama-13b-hf \
+    --output_dir results/$DATASET_NAME/baseline_inference \
+    --batch_size 16 \
+    --load_in_8bit \
+    --few_shot_prompt $PROMPT_FORMAT
+
+
+# gemma3-4b-it
+#python inference.py \
+#    --data_path $ALTROOT/data/${DATASET_NAME}/${SPLIT_NAME}-gpt.jsonl \
+#    --object_vocabulary_file data/llama_friendly_objects.csv \
+#    --model_dir google/gemma-3-4b-it \
+#    --output_dir results/$DATASET_NAME/baseline_inference \
+#    --batch_size 16 \
+#    --few_shot_prompt $PROMPT_FORMAT \
+#    --chat
+
+# gemma3-4b
+#python inference.py \
+#    --data_path $ALTROOT/data/${DATASET_NAME}/${SPLIT_NAME}-gpt.jsonl \
+#    --object_vocabulary_file data/llama_friendly_objects.csv \
+#    --model_dir google/gemma-3-4b-pt \
+#    --output_dir results/$DATASET_NAME/baseline_inference \
+#    --batch_size 16 \
+#    --few_shot_prompt $PROMPT_FORMAT \
+#    --chat
+
+# gemma3-27b seems like 8 bit is very bad for some reason
+#python inference.py \
+#    --data_path $ALTROOT/data/${DATASET_NAME}/${SPLIT_NAME}-gpt.jsonl \
+#    --object_vocabulary_file data/llama_friendly_objects.csv \
+#    --model_dir google/gemma-3-27b-it \
+#    --output_dir results/$DATASET_NAME/baseline_inference \
+#    --batch_size 16 \
+#    --few_shot_prompt $PROMPT_FORMAT \
+#    --chat
+
+#llama 70b
+#python inference.py \
+#    --data_path $ALTROOT/data/${DATASET_NAME}/${SPLIT_NAME}-gpt.jsonl \
+#    --object_vocabulary_file data/llama_friendly_objects.csv \
+#    --model_dir meta-llama/Llama-3.1-70B \
+#    --output_dir results/$DATASET_NAME/baseline_inference \
+#    --batch_size 4 \
+#    --load_in_4bit \
+#    --few_shot_prompt $PROMPT_FORMAT
+#
+##qwen3-4b
+#python inference.py \
+#    --data_path $ALTROOT/data/${DATASET_NAME}/${SPLIT_NAME}-gpt.jsonl \
+#    --object_vocabulary_file data/llama_friendly_objects.csv \
+#    --model_dir Qwen/Qwen3-4B \
+#    --output_dir results/$DATASET_NAME/baseline_inference \
+#    --batch_size 16 \
+#    --few_shot_prompt $PROMPT_FORMAT \
+##    --chat
+#
+##qwen3-14b
+#python inference.py \
+#    --data_path $ALTROOT/data/${DATASET_NAME}/${SPLIT_NAME}-gpt.jsonl \
+#    --object_vocabulary_file data/llama_friendly_objects.csv \
+#    --model_dir Qwen/Qwen3-14B \
+#    --output_dir results/$DATASET_NAME/baseline_inference \
+#    --batch_size 16 \
+#    --few_shot_prompt $PROMPT_FORMAT \
+#    --chat
+
+# gemma2-2b
+#python inference.py \
+#    --data_path $ALTROOT/data/${DATASET_NAME}/${SPLIT_NAME}-gpt.jsonl \
+#    --object_vocabulary_file data/llama_friendly_objects.csv \
+#    --model_dir google/gemma-2-2b \
+#    --output_dir results/$DATASET_NAME/baseline_inference \
+#    --batch_size 16 \
+#    --few_shot_prompt $PROMPT_FORMAT
+#    --chat

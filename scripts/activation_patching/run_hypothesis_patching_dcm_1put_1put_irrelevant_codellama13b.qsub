@@ -56,7 +56,7 @@ MODEL="codellama/CodeLlama-13b-hf"
 MODEL_NAME="codellama-13b"
 
 
-cd nnsight_patching_experiment
+cd nnsight_patching_experiments
 
 for CTF in dcm_pos_phrase_ctf_op dcm_obj
 do

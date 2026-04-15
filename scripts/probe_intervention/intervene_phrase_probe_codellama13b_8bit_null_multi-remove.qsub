@@ -1,0 +1,88 @@
+#!/bin/bash -l
+#$ -P llamagrp
+#$ -N intervene_phrase_probe_codellama13b_null_multiop
+#$ -l gpus=1
+#$ -l gpu_c=8.0
+#####$ -l gpu_type=V100
+#$ -l gpu_memory=47G
+#$ -pe omp 8
+####$ -l mem_per_core=16G
+#$ -l h_rt=12:00:00
+#$ -o log
+#$ -j y
+###$ -m ea
+#$ -M zilutang@bu.edu
+#$ -t 1-2
+
+module load cuda/11.8   # 11.2
+module load torch/2.1  # using installed 2.2.1 instead
+module load miniconda/23.11.0
+conda activate /projectnb/mcnet/peter/entity-tracking-gemma/eap_env
+#export TRANSFORMERS_CACHE=/projectnb2/llamagrp/peter/huggingface_cache/
+export HF_HOME=/projectnb2/llamagrp/peter/huggingface_cache/
+export HF_DATASETS_CACHE=/projectnb2/llamagrp/peter/huggingface_cache/
+export WANDB_PROJECT=entity-tracking-probing
+export ROOT=/projectnb/mcnet/peter/entity-tracking-probing
+
+index=$(($SGE_TASK_ID-1))
+
+ROOT=/projectnb/mcnet/peter/entity-tracking-probing
+ALTROOT=/projectnb/mcnet/peter/entity-tracking-gemma
+
+PROBE_TYPES=(number object)
+PROBE_TYPE=${PROBE_TYPES[$index]}
+#PROBE_TYPE=object  # number object
+
+#LAYER_TYPES=(last_n first_n at_n)
+#LAYER_TYPE=${LAYER_TYPES[$index]}
+LAYER_TYPE=at_n
+# TODO
+# 1. currently --eval_local_numops just filter total query ops, but not based on type (e.g. 2 query remove), if we can do that then results will be more clear
+# 2. not sure if boxes_altAlways_default_maxop12_5k will contain enough examples, if not, may need to do baseline inference on the full set i.e. test-states-gpt.jsonl or sample specific datasets for this experiment
+
+for LAYER in 3 #{1..40}
+do
+#  for NUMOPS in {1..7}
+#  do
+    # remove tag
+    echo "intervening on remove-tag ..."
+    DATA_NAME=boxes_altAlways_default_maxop12_5k
+    python intervene_nnsight.py \
+        --vocab_path data/llama_friendly_objects.csv \
+        --results_path $ROOT/results/$DATA_NAME/baseline_inference/inference_CodeLlama-13b-hf_8bit_test-gpt.jsonl \
+        --probe_dir $ROOT/probe_checkpoints/boxes_data_altForm_default/codellama-13b/probing/state_${PROBE_TYPE}_all_local \
+        --output_dir $ROOT/results/$DATA_NAME/phrase_probe_intervention/codellama-13b \
+        --model_name codellama/CodeLlama-13b-hf \
+        --load_in_8bit \
+        --layers $LAYER \
+        --intervention_layer_type $LAYER_TYPE \
+        --intervention_operation query-remove \
+        --intervention_probe_class 2 \
+        --intervention_direction null \
+        --intervention_site ${PROBE_TYPE}-op \
+        --eval_local_op_index "7,8,9,10,11,12,13,14,15,16,17,18" \
+        --eval_sample_per_numops 5000 \
+        --max_new_tokens 20
+
+    # exist tag
+    echo "intervening on exist-tag ..."
+    DATA_NAME=boxes_altAlways_default_maxop12_5k
+    python intervene_nnsight.py \
+      --vocab_path data/llama_friendly_objects.csv \
+      --results_path $ROOT/results/$DATA_NAME/baseline_inference/inference_CodeLlama-13b-hf_8bit_test-gpt.jsonl \
+      --probe_dir $ROOT/probe_checkpoints/boxes_data_altForm_default/codellama-13b/probing/state_${PROBE_TYPE}_all_local \
+      --output_dir $ROOT/results/$DATA_NAME/phrase_probe_intervention/codellama-13b \
+      --model_name codellama/CodeLlama-13b-hf \
+      --load_in_8bit \
+      --layers $LAYER \
+      --intervention_layer_type $LAYER_TYPE \
+      --intervention_operation query-exist \
+      --intervention_probe_class 1 \
+      --intervention_direction null \
+      --intervention_site ${PROBE_TYPE}-op \
+      --eval_local_op_index "7,8,9,10,11,12,13,14,15,16,17,18" \
+      --eval_sample_per_numops 5000 \
+      --max_new_tokens 20
+#  done
+done
+
