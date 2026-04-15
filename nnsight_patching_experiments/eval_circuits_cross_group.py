@@ -6,8 +6,8 @@ import torch
 
 import sys
 sys.path.append("..")
-from utils import get_model_and_tokenizer, get_random_guess_baseline, fix_random_seed, get_random_circuit, get_circuit, get_mean_activations, eval_circuit_performance, get_root_exp_dir, MODEL_TO_SHORT, get_module, get_circuit_old
-from patch_utils import build_parser, post_arg_parse_fix, get_model_and_dataset, setup_nnsight
+from utils import get_model_and_tokenizer, get_random_guess_baseline, fix_random_seed, get_random_circuit, get_circuit, get_mean_activations, eval_circuit_performance, get_root_exp_dir, MODEL_TO_SHORT, get_module, get_circuit_old, setup_nnsight
+from patch_utils import build_parser, post_arg_parse_fix, get_model_and_dataset
 
 
 def eval_model_performance(model, dataloader):

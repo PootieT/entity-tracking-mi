@@ -82,7 +82,7 @@ MODEL_TO_SHORT={
 }
 
 ## TODO for now copied from entity-tracking-probing.src.dataset, but need to merge it once we refactor the repos
-PROMPT = """Given the description after "Description:", write a true statement about all boxes and their contents according to the description after "Statement:".
+PROMPT = """Given the description after "Description:", write a true statement about a box and its contents according to the description after "Statement:".
 
 Description: Box 0 contains the car, Box 1 contains the cross, Box 2 contains the bag and the machine, Box 3 contains the paper and the string, Box 4 contains the bill, Box 5 contains the apple and the cash and the glass, Box 6 contains the bottle and the map.
 Statement: Box 3 contains the paper and the string.
@@ -91,7 +91,7 @@ Description: Box 0 contains the car, Box 1 contains the cross, Box 2 contains th
 Statement: Box 2 contains the bag and the machine and the map.
 
 Description: """
-PROMPT_ALTFORM = """Given the description after "Description:", write a true statement about all boxes and their contents according to the description after "Statement:". If a box is empty, write "Box X contains nothing".
+PROMPT_ALTFORM = """Given the description after "Description:", write a true statement about a box and its contents according to the description after "Statement:". If a box is empty, write "Box X contains nothing".
 
 Description: The car is in Box 0, the cross is in Box 1, the bag and the machine are in Box 2, the paper and the string are in Box 3, the bill is in Box 4, the apple and the cash and the glass are in Box 5, the bottle and the map are in Box 6.
 Statement: Box 3 contains the paper and the string.
@@ -112,46 +112,7 @@ Statement: Box 0 contains the plane, Box 1 contains the cross, Box 2 contains th
 Description: """
 
 
-INSTRUCTION = """Given the description after "Description:", write a true statement about all boxes and their contents according to the description after "Statement:". If a box is empty, write "Box X contains nothing".
-
-Description: """
-
-COT_GLOBAL_OPS_PROMPT = """Given the description after "Description:", and a query box after "Query", write a true statement about the query boxes and its contents according to the description after "Statement:". If there are operations, think step-by-step first what the box states are after each operation after "Think:" block first before writing statements.
-
-Description: Box 0 contains the car, Box 1 contains the cross, Box 2 contains the bag and the machine, Box 3 contains the paper and the string, Box 4 contains the bill, Box 5 contains the apple and the cash and the glass, Box 6 contains the bottle and the map.
-Query: Box 3 contains?
-Think: 
-- After descriptions, Box 3 contains the paper and the string.
-Statement: Box 3 contains the paper and the string.
-
-Description: Box 0 contains the car, Box 1 contains the cross, Box 2 contains the bag and the machine, Box 3 contains the paper and the string, Box 4 contains the bill, Box 5 contains the apple and the cash and the glass, Box 6 contains the bottle and the map. Remove the car from Box 0. Remove the paper and the string from Box 3. Put the plane into Box 0. Move the map from Box 6 to Box 2. Remove the bill from Box 4. Put the coat into Box 3.
-Query: Box 2 contains?
-Think: 
-- After descriptions, Box 2 contains the bag and the machine.
-- After 'Remove the car from Box 0', Box 2 contains the bag and the machine.
-- After 'Remove the paper and the string from Box 3', Box 2 contains the bag and the machine.
-- After 'Put the plane into Box 0', Box 2 contains the bag and the machine.
-- After 'Move the map from Box 6 to Box 2', Box 2 contains the bag and the machine and the map.
-- After 'Remove the bill from Box 4', Box 2 contains the bag and the machine and the map.
-- After 'Put the coat into Box 3', Box 2 contains the bag and the machine and the map.
-Statement: Box 2 contains the bag and the machine and the map.
-
-Description: """
-
-COT_QUERY_OPS_PROMPT = """Given the description after "Description:", and a query box after "Query", write a true statement about the query boxes and its contents according to the description after "Statement:". If there are operations, think step-by-step first what the box states are after each operation after "Think:" block first before writing statements.
-
-Description: Box 0 contains the car, Box 1 contains the cross, Box 2 contains the bag and the machine, Box 3 contains the paper and the string, Box 4 contains the bill, Box 5 contains the apple and the cash and the glass, Box 6 contains the bottle and the map.
-Query: Box 3 contains?
-Think: 
-- After descriptions, Box 3 contains the paper and the string.
-Statement: Box 3 contains the paper and the string.
-
-Description: Box 0 contains the car, Box 1 contains the cross, Box 2 contains the bag and the machine, Box 3 contains the paper and the string, Box 4 contains the bill, Box 5 contains the apple and the cash and the glass, Box 6 contains the bottle and the map. Remove the car from Box 0. Remove the paper and the string from Box 3. Put the plane into Box 0. Move the map from Box 6 to Box 2. Remove the bill from Box 4. Put the coat into Box 3.
-Query: Box 2 contains?
-Think: 
-- After descriptions, Box 2 contains the bag and the machine.
-- After 'Move the map from Box 6 to Box 2', Box 2 contains the bag and the machine and the map.
-Statement: Box 2 contains the bag and the machine and the map.
+INSTRUCTION = """Given the description after "Description:", write a true statement about a box and its contents according to the description after "Statement:". If a box is empty, write "Box X contains nothing".
 
 Description: """
 
@@ -159,6 +120,13 @@ def free_gpu_cache():
     gc.collect()
     torch.cuda.empty_cache()
 
+def setup_nnsight():
+    """
+    Setup script for nnsight
+    """
+    assert "NDIF_APIKEY" in os.environ, "pass NDIF_APIKEY environment variable!"
+    CONFIG.API.APIKEY = os.environ['NDIF_APIKEY']
+    assert "HF_TOKEN" in os.environ, "pass HF_TOKEN environment variable!"
 
 
 def str_to_bool(value):
@@ -2874,16 +2842,28 @@ def generate_counterfactual_dcm_remove_across(prompt: str, **kwargs) -> Dict[str
 #     return new_prompt, prompt, None
 
 ## for now copied from entity-tracking-probing.src.utils, but need to merge it once we refactor the repos
-def format_sentence(dat: Union[str,Dict[str, Any], List[int]], prompt_format:bool, prompt_prefix:Optional[str], chat_format:bool=False, tokenizer=None) -> str:
+def format_sentence(dat: Union[str, Dict[str, Any], List[int]], prompt_format: bool, prompt_prefix: Optional[str], chat_format: bool = False, tokenizer=None) -> str:
     if isinstance(dat, str):
         sent = dat
     elif isinstance(dat, list):
         sent = tokenizer.decode(dat, skip_special_tokens=True)
+        pdb.set_trace()
     else:
         sent_field = "context" if "context" in dat else "prefix"
         sent = dat[sent_field]
-    if prompt_format in ["PROMPT", "PROMPT_ALTFORM","PROMPT_ALLBOX_ALTFORM", "INSTRUCTION"]:
-        example_sent = prompt_prefix + ". ".join(sent.split(". ")[:-1]) + ".\nStatement: " + sent.split(". ")[-1].removesuffix(" .")
+
+    if prompt_format in ["PROMPT", "PROMPT_ALTFORM", "PROMPT_ALLBOX_ALTFORM", "INSTRUCTION", "PROMPT_ALTFORM_SINGULAR",
+                         "INSTRUCTION_SINGULAR", "default"]:
+        # pdb.set_trace(header="formatting sentence with few-shot prompt")
+        # just need to make sure if prompt_prefix is already in the example sentence
+        # print(f"Formatting sentence with prompt_format {prompt_format} and prompt_prefix {prompt_prefix}")
+        if prompt_prefix is None:
+            # NOTE: this is only for llama70b, 2shot. The original PROMPT variable passed here are not altform, and the input dat already contains the full altform prompt.
+            example_sent = sent
+        else:
+            example_sent = prompt_prefix + ". ".join(sent.split(". ")[:-1]) + ".\nStatement: " + sent.split(". ")[
+                -1].removesuffix(" .")
+
     elif prompt_format:
         raise NotImplementedError()
     else:
@@ -2892,18 +2872,18 @@ def format_sentence(dat: Union[str,Dict[str, Any], List[int]], prompt_format:boo
     if not chat_format:
         return example_sent
 
-    assert prompt_format!=False and tokenizer is not None
+    assert prompt_format != False and tokenizer is not None
     instruction = example_sent.split("\n")[0]
     examples = []
-    if "PROMPT" in prompt_format or prompt_format == "INSTRUCTION": # 2 shots (no CoT)
-        example_sents = example_sent.replace("\n\n","\n").split("\n")
+    if "PROMPT" in prompt_format or prompt_format.startswith("INSTRUCTION"):  # 2 shots (no CoT)
+        example_sents = example_sent.replace("\n\n", "\n").split("\n")
         curr_ex = {}
         for i, sent in enumerate(example_sents[1:]):
             if sent.startswith("Description"):
                 curr_ex['input'] = sent
             elif sent.startswith("Statement"):
                 curr_ex['output'] = sent
-            if len(curr_ex)==2:
+            if len(curr_ex) == 2:
                 examples.append(curr_ex)
                 curr_ex = {}
 

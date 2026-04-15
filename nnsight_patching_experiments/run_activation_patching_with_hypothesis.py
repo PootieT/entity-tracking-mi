@@ -18,8 +18,8 @@ import seaborn as sns
 
 import sys
 sys.path.append("..")
-from utils import get_model_and_tokenizer, fix_random_seed, get_random_circuit, get_circuit, eval_circuit_performance, MODEL_TO_SHORT, force_pad, check_prompt_success, fix_fonts
-from patch_utils import build_parser, post_arg_parse_fix, get_model_and_dataset, maybe_patch_or_load_cache, setup_nnsight
+from utils import get_model_and_tokenizer, fix_random_seed, get_random_circuit, get_circuit, eval_circuit_performance, MODEL_TO_SHORT, force_pad, check_prompt_success, fix_fonts, setup_nnsight
+from patch_utils import build_parser, post_arg_parse_fix, get_model_and_dataset, maybe_patch_or_load_cache
 
 
 def activation_patching_residual_stream_old(

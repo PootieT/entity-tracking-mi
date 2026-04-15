@@ -19,12 +19,8 @@ sys.path.append("..")
 from utils import get_model_and_tokenizer, fix_random_seed, get_random_circuit, get_circuit, eval_circuit_performance, \
     MODEL_TO_SHORT, load_dataloader, get_objects
 sys.path.append("../nnsight_patching_experiment")
-from patch_utils import build_parser, post_arg_parse_fix, maybe_patch_or_load_cache, maybe_logit_soft_capping
+from patch_utils import build_parser, post_arg_parse_fix, maybe_patch_or_load_cache, maybe_logit_soft_capping, setup_nnsight
 
-
-def setup_configs():
-    API = os.environ.get('NDIF_APIKEY')
-    CONFIG.API.APIKEY = API
 
 
 def run_behavioral_test(model, dataloader, args) -> List[float]:
@@ -244,7 +240,7 @@ def behavioral_test_main(args: argparse.Namespace):
 
     tokenizer.padding_side = "right"
     tokenizer.pad_token = tokenizer.eos_token
-    if any([t in args.model for t in ["gemma", "Llama-3.", "santacoder", "gpt2", "Llama", "Qwen"]]):
+    if any([t in args.model for t in ["gemma", "Llama-3.", "santacoder", "gpt2", "Qwen"]]):
         prepend_space_to_answer = True
     else:
         prepend_space_to_answer = False
@@ -350,6 +346,6 @@ if __name__ == "__main__":
     print(f"ARGS: {args}")
     fix_random_seed(args.seed)
     if args.use_ndif_remote:
-        setup_configs()
+        setup_nnsight()
     pdb.set_trace()
     behavioral_test_main(args)

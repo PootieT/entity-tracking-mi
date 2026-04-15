@@ -25,8 +25,8 @@ import seaborn as sns
 
 import sys
 sys.path.append("..")
-from utils import fix_random_seed, free_gpu_cache, get_basis_directions, pad_batch_collate_fn
-from patch_utils import build_parser, post_arg_parse_fix, get_model_and_dataset, setup_nnsight
+from utils import fix_random_seed, free_gpu_cache, get_basis_directions, pad_batch_collate_fn, setup_nnsight
+from patch_utils import build_parser, post_arg_parse_fix, get_model_and_dataset
 
 
 

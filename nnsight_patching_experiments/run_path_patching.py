@@ -22,7 +22,7 @@ import plotly.express as px
 import plotly.io as pio
 import gc
 
-from patch_utils import build_parser, post_arg_parse_fix, maybe_patch_or_load_cache, get_model_and_dataset, setup_nnsight
+from patch_utils import build_parser, post_arg_parse_fix, maybe_patch_or_load_cache, get_model_and_dataset
 
 pio.renderers.default = "plotly_mimetype+notebook_connected+colab+notebook"
 
@@ -30,7 +30,7 @@ import sys
 
 sys.path.append("..")
 from utils import get_model_and_tokenizer, load_dataloader, get_random_guess_baseline, fix_random_seed, str_to_bool, \
-    find_previous_query_box_pos, is_int_with_negatives, force_pad, PROMPT_ALTFORM, compute_topk_components_knee
+    find_previous_query_box_pos, is_int_with_negatives, force_pad, PROMPT_ALTFORM, compute_topk_components_knee, setup_nnsight
 
 
 def plot_patching_results(
