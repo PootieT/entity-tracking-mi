@@ -36,6 +36,10 @@ PROBE_TYPE=number  # number object
 LAYER_TYPES=(first_n last_n at_n)
 LAYER_TYPE=${LAYER_TYPES[$index]}
 
+# load remove probe, intervene on remove phrase to try and null-ify the remove operation
+# expecting model to generate removed object more
+#    --tracer_file
+
 for LAYER in {1..40}
 do
   # move (into)

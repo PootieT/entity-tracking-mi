@@ -1,6 +1,10 @@
 #!/bin/bash -l
 #$ -P llamagrp
 #$ -N subsampe_and_convert_altForm_data
+#$ -l gpus=1
+#$ -l gpu_c=6.0
+#####$ -l gpu_type=V100
+#####$ -l gpu_memory=47G
 #$ -l h_rt=1:00:00
 #$ -o log
 #$ -j y

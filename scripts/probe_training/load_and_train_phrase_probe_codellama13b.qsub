@@ -1,0 +1,80 @@
+#!/bin/bash -l
+#$ -P llamagrp
+#$ -N load_and_train_phrase_probe_number_all_codellama13b
+#$ -l gpus=1
+#$ -l gpu_c=8.0
+#$ -l gpu_memory=47G
+#$ -pe omp 8
+##### below lines for full training data (large CPU mem)
+#####$ -l mem_per_core=16G
+#$ -l h_rt=24:00:00
+#$ -o log
+#$ -j y
+###$ -m ea
+#$ -M zilutang@bu.edu
+#$ -t 1
+
+module load cuda/11.8   # 11.2
+module load torch/2.1  # using installed 2.2.1 instead
+module load miniconda/23.11.0
+conda activate /projectnb/mcnet/peter/entity-tracking-gemma/eap_env
+export HF_HOME=/projectnb2/llamagrp/peter/huggingface_cache/
+export HF_DATASETS_CACHE=/projectnb2/llamagrp/peter/huggingface_cache/
+export TOKENIZERS_PARALLELISM=false
+export WANDB_PROJECT=entity-tracking-probing
+export ROOT=/projectnb/mcnet/peter/entity-tracking-probing
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+#export CUDA_LAUNCH_BLOCKING=1
+index=$(($SGE_TASK_ID-1))
+
+#CONDITIONS=(period_comma_cumulative period_comma_local)
+#CONDITIONS=(period_comma_prior_cumulative period_comma_prior_local)
+#CONDITIONS=(number_all_cumulative number_all_local)
+CONDITIONS=(object_all_local)
+CONDITION=${CONDITIONS[$index]}
+
+MAIN_PORT=$(( RANDOM % (50000 - 30000 + 1 ) + 30000 ))
+ROOT=/projectnb/mcnet/peter/entity-tracking-probing
+ALTROOT=/projectnb/mcnet/peter/entity-tracking-gemma
+
+
+for LAYER in {31..40}
+do
+  echo "Phrase probe conditioning on ${CONDITION}! Probing layer ${LAYER}"
+
+#  train and test on subset
+#  python train_probe.py \
+#    --dataset_path $ALTROOT/data/boxes_altAlways_default_maxop12_5k \
+#    --dataset_subset \
+#    --object_vocabulary_file data/llama_friendly_objects.csv \
+#    --model_representation_path $ROOT/model_cache/boxes_data_altForm_default/codellama13b_number_all \
+#    --checkpoint_root ./probe_checkpoints/boxes_data_altForm_default/codellama-13b \
+#    --load_model_representation \
+#    --model_type CodeLlama-13b-hf \
+#    --model_path codellama/CodeLlama-13b-hf \
+#    --layer $LAYER \
+#    --condition_on $CONDITION \
+#    --epo 64 \
+#    --lr 1e-4 \
+#    --debug_train
+
+    # train on the full set, test on subset (need 8 cores to load h5 loader faster)
+#    taskset -c 0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27 python train_probe.py \
+  python train_probe.py \
+    --dataset_path $ALTROOT/data/boxes_altAlways_default_maxop12_5k \
+    --dataset_subset_test_only \
+    --object_vocabulary_file data/llama_friendly_objects.csv \
+    --model_representation_path $ROOT/model_cache/boxes_data_altForm_default/codellama13b_object_all \
+    --checkpoint_root ./probe_checkpoints/boxes_data_altForm_default/codellama-13b \
+    --load_model_representation \
+    --model_type CodeLlama-13b-hf \
+    --model_path codellama/CodeLlama-13b-hf \
+    --layer $LAYER \
+    --condition_on $CONDITION \
+    --epo 5 \
+    --lr 1e-4 \
+    --dataset_loader_num_workers 8
+#    --debug_train
+done
+
+

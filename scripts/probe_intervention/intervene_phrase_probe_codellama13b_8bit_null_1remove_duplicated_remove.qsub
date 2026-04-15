@@ -37,7 +37,6 @@ PROBE_TYPE=object  # number object
 LAYER_TYPES=(last_n first_n at_n)
 LAYER_TYPE=${LAYER_TYPES[$index]}
 
-# TODO need to randomly inference then convert format
 PILOT_FORMAT_FILE=/projectnb/tin-lab/qazhao/ICML26/entity-tracking-gemma/pilot_exps/output/CODELLAMA_13B/dup_rm/inference_results_300.jsonl
 OG_FORMAT_FILE=$ROOT/results/dup_rm/baseline_inference/inference_CodeLlama-13b-hf_8bit_300.jsonl
 if [ ! -f "$OG_FORMAT_FILE" ]; then
