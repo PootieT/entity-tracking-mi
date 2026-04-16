@@ -3,49 +3,46 @@ probing experiments to understand entity tracking task
 
 # Local / Global / Mention Probes  
 
-To cache model residual streams (last token):
+To cache model residual streams (last token). These are the same caches used for prior state probes.
 ```commandline
-./probe_experiments/cache_representation_codellama13b.qsub  # using 2GPUs local
-./probe_experiments/cache_representation_llama3_70B.qsub  # using NDIF
+./scripts/probe_training/cache_representation_codellama13b.qsub  # using 2GPUs local
+./scripts/probe_training/cache_representation_llama3_70B.qsub  # using NDIF
 ```
 
 To train Local Probes
 ```commandline
-./probe_experiments/load_and_train_local_probe_codellama13b.qsub  # using 1GPU local
-./probe_experiments/load_and_train_local_probe_llama3_70B.qsub  # using NDIF
+./scripts/probe_training/load_and_train_local_probe_codellama13b.qsub  # using 1GPU local
+./scripts/probe_training/load_and_train_local_probe_llama3_70B.qsub  # using NDIF
 ```
 
 To train Global probes
 
 ```commandline
-./probe_experiments/load_and_train_global_probe_codellama13b.qsub  # using 1GPU local
-./probe_experiments/load_and_train_global_probe_llama3_70B.qsub  # using NDIF
+./scripts/probe_training/load_and_train_global_probe_codellama13b.qsub  # using 1GPU local
+./scripts/probe_training/load_and_train_global_probe_llama3_70B.qsub  # using NDIF
 ```
 
 To train mention probes
 
 ```commandline
-./probe_experiments/load_and_train_mention_probe_codellama13b.qsub  # using 1GPU local
-./probe_experiments/load_and_train_mention_probe_llama3_70B.qsub  # using NDIF
+./scripts/probe_training/load_and_train_mention_probe_codellama13b.qsub  # using 1GPU local
+./scripts/probe_training/load_and_train_mention_probe_llama3_70B.qsub  # using NDIF
 ```
 
 # Prior State Probes
 
 ### Script
-To cache hidden states
+To cache hidden states (same as local/global probes)
 ```commandline
-./scripts/cache_ternary_probe_activations_codellama13b.qsub  # local 2GPU
-./scripts/cache_ternary_probe_activations_llama3_70B # NDIF remote
+./scripts/probe_training/cache_representation_codellama13b.qsub  # using 2GPUs local
+./scripts/probe_training/cache_representation_llama3_70B.qsub  # using NDIF
 ```
 
 To train probe
 ```commandline
 ./scripts/load_and_train_probe_llama3_70B.qsub  # for llama3-70b
 ./scripts/load_and_train_probe_codellama13b.qsub  # for codellama 13b
-./scripts/load_and_train_probe_codellama13b_moveContent.qsub  # for codellama13b with moveContent split
 ```
-
-
 
 # Remove Mechanism
 ## Ternary Probe Training
@@ -76,7 +73,7 @@ Since we need to train #layers amount of probes, for `codellama13b` I usually su
 
 
 ### Data
-The training data used here is in `/projectnb/mcnet/peter/entity-tracking-gemma/data/boxes_altAlways_default_maxop12_5k`.
+The training data used here is in `boxes_altAlways_default_maxop12_5k`.
 And specifically training uses `train-gpt.jsonl` and test uses `test-subsample-states-gpt.jsonl`. We need full train split
 because the class label is very imbalanced with 700 probes.
 
@@ -86,41 +83,7 @@ examples where model succeeds. The most important scripts are
 ```commandline
 ./scripts/intervene_phrase_probe_codellama13b_8bit_null_1put.qsub  # null the 1 put operation in query box
 ./scripts/intervene_phrase_probe_codellama13b_8bit_null_1remove.qsub  # null the 1 remove operation in query box
-./scripts/intervene_phrase_probe_codellama13b_8bit_null_1remove_put_globally_removed.qsub  # for specific dataset with putting globally removed object in
+./scripts/intervene_phrase_probe_codellama13b_8bit_null_1remove_*.qsub  # for 3 behaviorally degenerate remove cases
 ```
 
 since we are only doing 100 examples in most cases, these should be <10 min each run/layer
-
-
-# Utilities that maybe helpful
-
-## Anything Data format related
-Conversion between json/tsv, subsampling, checkout 
-```commandline
-./entity-tracking-probing/utils/*
-```
-Plotting/analysis scripts
-```commandline
-entity-tracking-probing/*
-```
-run them like `python -m src.analysis.plot_phrase_probe_results`
-
-#### Font issue in plots
-If you have issue with `Times New Roman` font when plotting (which I 
-had to deal with because SCC doesn't have it), download the font .ttf file
-from [here](https://github.com/justrajdeep/fonts/blob/master/Times%20New%20Roman.ttf)
-
-`scp` or `rsync` this file to your SCC home directory
-```commandline
-rsync -ravz ~/Downloads/Times\ New\ Roman.ttf username@scc1.bu.edu:your/home/dir/.local/share/fonts/
-```
-Delete `matplotlib` font cache:
-```commandline
-rm /your/home/dir/.cache/matplotlib
-```
-re-start python and run this to rebuild cache, and it should work.
-```
->>> import matplotlib.font_manager as fm
->>> [f.name for f in fm.fontManager.ttflist if "Times" in f.name]
-['Times New Roman']
-```
