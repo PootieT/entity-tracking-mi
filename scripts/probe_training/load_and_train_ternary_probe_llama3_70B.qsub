@@ -49,6 +49,7 @@ do
     --layer $LAYER \
     --condition_on $CONDITION \
     --epo 5 \
+    --lr 1e-4 \
     --caching_batch_size 12 \
     --ndif_remote
 done

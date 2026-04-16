@@ -10,21 +10,23 @@ To cache model residual streams (last token):
 ```
 
 To train Local Probes
-
 ```commandline
-
+./probe_experiments/load_and_train_local_probe_codellama13b.qsub  # using 1GPU local
+./probe_experiments/load_and_train_local_probe_llama3_70B.qsub  # using NDIF
 ```
 
 To train Global probes
 
 ```commandline
-
+./probe_experiments/load_and_train_global_probe_codellama13b.qsub  # using 1GPU local
+./probe_experiments/load_and_train_global_probe_llama3_70B.qsub  # using NDIF
 ```
 
 To train mention probes
 
 ```commandline
-
+./probe_experiments/load_and_train_mention_probe_codellama13b.qsub  # using 1GPU local
+./probe_experiments/load_and_train_mention_probe_llama3_70B.qsub  # using NDIF
 ```
 
 # Prior State Probes
@@ -38,7 +40,7 @@ To cache hidden states
 
 To train probe
 ```commandline
-./scripts/load_and_train_probe_llama3_70B.qsub  # for llama405b
+./scripts/load_and_train_probe_llama3_70B.qsub  # for llama3-70b
 ./scripts/load_and_train_probe_codellama13b.qsub  # for codellama 13b
 ./scripts/load_and_train_probe_codellama13b_moveContent.qsub  # for codellama13b with moveContent split
 ```
@@ -48,29 +50,30 @@ To train probe
 # Remove Mechanism
 ## Ternary Probe Training
 
-In my code, I refer to these ternary probes as `phrase probe`.
+In the code, sometimes the ternary probes are referred to as `phrase probe`.
 ### Script
 To cache the model representation, see
 ```commandline
 ./scripts/cache_codellama13b_phrase_probe_activations.qsub
-./scripts/cache_gpt2_phrase_probe_activations.qsub
 ```
 some important arguments here are
 - `condition_on`: which token hidden states to condition the probe on: 
   - `object_all_local`: condition on object, local states
   - `number_all_local`: condition on box_id (in code I often refer to as `number`), local states
-  - `number_all_cumulative`: condition on box_id, global states. When caching, this and `number_all_local` results in the same cache, so just use `number_all_local` when caching
+  - `number_all_cumulative`: condition on box_id, global states. When caching, this uses the same cache as `number_all_local`.
 
 For `codellama13b`, make sure to use 2gpu torch run distributed w/ 16bit. (8bit cache does not result in good probes).
-You will also notice qsub this with `#$ -pe omp 28`, this is needed because we are storing a lot of hidden states needs lots of memories.
+You will also notice qsub this with `#$ -pe omp 28` (28 cores), this is needed because we are storing a lot of hidden states needs lots of memories.
 
 Now to load and train the probes, see
 ```commandline
 ./scripts/load_and_train_phrase_probe_codellama13b.qsub
+/scripts/load_and_train_ternary_probe_llama3_70B.qsub
 ```
 
-Since we need to train #layers amount of probes, for `codellama13b` I usually submit 4 jobs, each for-looping 10 probes (each probe takes around 20-30min to train)
-but customize however you want
+Since we need to train #layers amount of probes, for `codellama13b` I usually submit 4 jobs, each for-looping 10 probes 
+(each probe takes around 20-30min to train)
+
 
 ### Data
 The training data used here is in `/projectnb/mcnet/peter/entity-tracking-gemma/data/boxes_altAlways_default_maxop12_5k`.

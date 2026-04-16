@@ -1,0 +1,40 @@
+#!/bin/bash -l
+#$ -P llamagrp
+#$ -N train_probs_llama3-70b_global
+#$ -l gpus=1
+#$ -l gpu_c=8.0
+#$ -l gpu_memory=47G
+#$ -l h_rt=6:00:00
+#$ -o log
+#$ -j y
+###$ -m ea
+#$ -t 1
+
+module load cuda/11.8
+module load torch/2.1
+module load miniconda/23.11.0
+conda activate <your_env>
+
+# API keys and caching dirs
+export HF_HOME="<your hf home>"
+ROOT=$(pwd)/probe_experiments
+
+for LAYER in {1..40}
+do
+  echo "Training local probe, Probing layer ${LAYER}"
+  # TODO but this may need train_probe_load_NDIF.py
+  python probe_experiments/train_probe.py \
+      --dataset_path $ROOT/../data/boxes_altAlways_default_maxop12_5k \
+      --dataset_subset \
+      --model_path meta-llama/Llama-3.1-70B \
+      --layer $LAYER \
+      --epo 64 \
+      --model_type Llama-3.1-70B \
+      --object_location \
+      --condition_on the \
+      --load_model_representation \
+      --model_representation_path $ROOT/model_cache/codellama13b_the \
+      --checkpoint_root $ROOT/probe_checkpoints/codellama-13b/
+done
+
+
