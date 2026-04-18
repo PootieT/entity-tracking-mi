@@ -99,9 +99,8 @@ because the class label is very imbalanced with 700 probes.
 Before running intervention, we need to run baseline model inference to 1) get model behavioral accuracy and 2) get 
 examples where model succeeds. The most important scripts are 
 ```commandline
-./scripts/intervene_phrase_probe_codellama13b_8bit_null_1put.qsub  # null the 1 put operation in query box
-./scripts/intervene_phrase_probe_codellama13b_8bit_null_1remove.qsub  # null the 1 remove operation in query box
-./scripts/intervene_phrase_probe_codellama13b_8bit_null_1remove_*.qsub  # for 3 behaviorally degenerate remove cases
+./scripts/intervene_phrase_probe_codellama13b_8bit_null_1put.qsub  # null the 1 exist tag in query box
+./scripts/intervene_phrase_probe_codellama13b_8bit_null_1remove.qsub  # null the 1 remove tag in query box
 ```
 
 since we are only doing 100 examples in most cases, these should be <10 min each run/layer
