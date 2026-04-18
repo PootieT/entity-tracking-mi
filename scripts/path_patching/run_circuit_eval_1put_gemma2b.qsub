@@ -12,7 +12,7 @@
 ####$ -m ea
 
 # Give job a name
-#$ -N put_notLastObj_gemma2b_n200
+#$ -N eval_1put_gemma2b
 
 # Combine output and error files into a single file
 #$ -j y
@@ -25,6 +25,7 @@
 # request 1 GPU
 #$ -l gpus=1
 #$ -l gpu_c=8.5
+#####$ -l gpu_type=V100
 #$ -l gpu_memory=47G
 
 # Submit an array job with 5 tasks
@@ -49,25 +50,32 @@ export HF_TOKEN="<your hf token>"
 ROOT=$(pwd)
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
-
 MODEL="google/gemma-2-2b"
 MODEL_NAME="gemma-2-2b"
 
 cd nnsight_patching_experiments
 
-python run_path_patching.py \
+# top heads (20, 10, 30, 30)
+#Value fetcher heads: [[22, 5], [22, 4], [20, 3], [19, 1], [18, 6], [23, 6], [22, 3], [17, 7], [22, 2], [25, 4], [25, 2], [16, 4], [20, 7], [15, 7], [24, 3], [25, 6], [15, 3], [22, 6], [16, 5], [18, 3]]
+#Position transmitter heads: [[15, 7], [17, 7], [14, 4], [16, 4], [13, 6], [16, 6], [17, 3], [17, 5], [12, 3], [11, 5]]
+#Position detector heads: [[8, 1], [14, 4], [12, 3], [10, 5], [13, 6], [9, 5], [11, 5], [12, 6], [13, 2], [7, 4], [13, 1], [12, 2], [6, 3], [15, 7], [14, 3], [12, 1], [8, 0], [6, 0], [13, 5], [16, 3], [11, 6], [12, 7], [11, 1], [10, 4], [16, 6], [14, 2], [12, 4], [16, 4], [14, 7], [7, 3]]
+#Structure reader heads: [[12, 3], [11, 4], [8, 1], [7, 7], [11, 5], [11, 3], [13, 6], [12, 0], [10, 5], [8, 0], [11, 2], [12, 2], [9, 3], [7, 4], [9, 5], [7, 3], [10, 3], [11, 0], [9, 2], [7, 1], [8, 3], [13, 2], [8, 5], [11, 6], [13, 3], [8, 4], [8, 2], [10, 7], [5, 3], [9, 6]]
+
+python eval_circuits.py \
   --model $MODEL \
   --datafile "${ROOT}/data/boxes_altAlways_1put_moreObj_noEmpty/train-t5.jsonl" \
   --batch_size 8 \
-  --num_samples 16 \
+  --num_samples 100 \
   --ops_order "put" \
   --query_ops_order "put" \
-  --output_dir "${ROOT}/outputs/nnsight_patch_1put/${MODEL_NAME}/logp_notLastObj" \
   --counterfactual "rand_obj_rand_query_id" \
-  --success_filter true \
-  --sort_query_objects \
   --num_query_object 2 \
-  --score_source logp \
-  --use_object_index ":-1"
+  --sort_query_objects \
+  --circuit_root_path "${ROOT}/outputs/nnsight_patch_1put/${MODEL_NAME}/logp/n200" \
+  --mean_activation_cache_path "${ROOT}/outputs/nnsight_patch_1put/${MODEL_NAME}" \
+#  --n_groupA 20 \
+#  --n_groupB 10 \
+#  --n_groupC 30 \
+#  --n_groupD 30 \
 
 

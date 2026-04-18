@@ -58,6 +58,10 @@ MODEL_NAME="gemma-2-2b"
 
 cd nnsight_patching_experiments
 
+# Counterfactual hypothesis
+# dcm_pos_phrase_ctf_op: position information (order ID)
+# dcm_obj: the object content
+
 CTF=dcm_pos_phrase_ctf_op #dcm_obj
 #CACHE_DIR="${ROOT}/outputs/nnsight_patch_1put_1put_irrelevant/${MODEL_NAME}"
 CACHE_DIR="${ROOT}/outputs/nnsight_patch_noop/${MODEL_NAME}"

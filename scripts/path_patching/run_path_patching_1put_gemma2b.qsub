@@ -46,11 +46,8 @@ conda activate <your_env>
 # API keys and caching dirs
 export HF_HOME="<your hf home>"
 export HF_TOKEN="<your hf token>"
-export NDIF_APIKEY="<your NDIF apikey>" # only if you are running large model on remote
 ROOT=$(pwd)
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
-
-index=$(($SGE_TASK_ID-1))
 
 MODEL="google/gemma-2-2b"
 MODEL_NAME="gemma-2-2b"

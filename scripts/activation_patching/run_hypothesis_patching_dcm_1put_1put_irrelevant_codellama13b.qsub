@@ -58,6 +58,10 @@ MODEL_NAME="codellama-13b"
 
 cd nnsight_patching_experiments
 
+# Counterfactual hypothesis
+# dcm_pos_phrase_ctf_op: position information (order ID)
+# dcm_obj: the object content
+
 for CTF in dcm_pos_phrase_ctf_op dcm_obj
 do
   python run_activation_patching_with_hypothesis.py \

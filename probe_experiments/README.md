@@ -3,6 +3,10 @@ probing experiments to understand entity tracking task
 
 # Local / Global / Mention Probes  
 
+<p align="center">
+  <img src="../assets/local_global_probe_acc_codellama_13b.png" alt="Put Circuit Description and Results" width="100%"/>
+</p>
+
 To cache model residual streams (last token). These are the same caches used for prior state probes.
 ```commandline
 ./scripts/probe_training/cache_representation_codellama13b.qsub  # using 2GPUs local
@@ -31,6 +35,11 @@ To train mention probes
 
 # Prior State Probes
 
+<p align="center">
+  <img src="../assets/non_triv_avg_accuracy.png" alt="Put Circuit Description and Results" width="100%"/>
+</p>
+
+
 ### Script
 To cache hidden states (same as local/global probes)
 ```commandline
@@ -46,6 +55,10 @@ To train probe
 
 # Remove Mechanism
 ## Ternary Probe Training
+
+Conditioned on Box ID             |  Conditioned on Objects
+:-------------------------:|:-------------------------:
+<img src="../assets/ternary_probe_number_all_local.png" alt="Put Circuit Description and Results" width="50%"/>  |  <img src="../assets/ternary_probe_object_all_local.png" alt="Put Circuit Description and Results" width="50%"/>
 
 In the code, sometimes the ternary probes are referred to as `phrase probe`.
 ### Script
@@ -78,6 +91,11 @@ And specifically training uses `train-gpt.jsonl` and test uses `test-subsample-s
 because the class label is very imbalanced with 700 probes.
 
 ## Intervention with Ternary Probes
+
+<p align="center">
+  <img src="../assets/ternary_probe_intervention_aggregate.png" alt="Put Circuit Description and Results" width="100%"/>
+</p>
+
 Before running intervention, we need to run baseline model inference to 1) get model behavioral accuracy and 2) get 
 examples where model succeeds. The most important scripts are 
 ```commandline

@@ -1,7 +1,7 @@
 #!/bin/bash -l
 
 # Set SCC project
-#$ -P llamagrp
+#$ -P mcnet
 
 # Specify hard time limit for the job.
 #   The job will be aborted if it runs longer than this time.
@@ -12,11 +12,11 @@
 ####$ -m ea
 
 # Give job a name
-#$ -N activation_patching_noop_gemma2b
+#$ -N eval_1put_notLastObj_codellama13b
 
 # Combine output and error files into a single file
 #$ -j y
-#$ -o log
+#$ -o log-1put-notLastObj
 
 # request 6 cores, each with 6 GB RAM at least
 #$ -pe omp 4
@@ -38,6 +38,7 @@ echo "Job ID : $JOB_ID  $SGE_TASK_ID"
 echo "=========================================================="
 nvidia-smi
 
+
 module load cuda/11.8
 module load torch/2.1
 module load miniconda/23.11.0
@@ -46,41 +47,29 @@ conda activate <your_env>
 # API keys and caching dirs
 export HF_HOME="<your hf home>"
 export HF_TOKEN="<your hf token>"
-export NDIF_APIKEY="<your NDIF apikey>" # only if you are running large model on remote
 ROOT=$(pwd)
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+export CUDA_LAUNCH_BLOCKING=1
+export TORCH_USE_CUDA_DSA=true
 
 index=$(($SGE_TASK_ID-1))
 
-MODEL="google/gemma-2-2b"
-MODEL_NAME="gemma-2-2b"
+MODEL="codellama/CodeLlama-13b-hf"
+MODEL_NAME="codellama-13b"
+
+cd nnsight_patching_experiment
 
 
-cd nnsight_patching_experiments
-
-# Counterfactual hypothesis
-# dcm_pos_phrase_ctf_op: position information (order ID)
-# dcm_obj: the object content
-
-for CTF in dcm_pos_phrase_ctf_op dcm_obj
-do
-  python run_subspace_patching.py \
-    --model $MODEL \
-    --datafile "${ROOT}/data/boxes_altAlways_default_maxop12_5k/train-t5.jsonl" \
-    --num_samples 200 \
-    --ops_order "" \
-    --query_ops_order "" \
-    --output_dir "${ROOT}/outputs/nnsight_patch_noop/${MODEL_NAME}/${CTF}/subspace_lamb6" \
-    --counterfactual $CTF \
-    --success_filter true \
-    --num_query_object 1 \
-    --basis_direction_cache_path "${ROOT}/outputs/nnsight_patch_noop/${MODEL_NAME}" \
-    --train_size 100 \
-    --validation_size 100 \
-    --n_epochs 2 \
-    --batch_size 8 \
-    --train_batch_size 8 \
-    --learning_rate 0.02 \
-    --lamb 6.0 \
-    --verbose
-done
+python eval_circuits.py \
+  --model $MODEL \
+  --datafile "${ROOT}/data/boxes_altAlways_1put_moreObj_noEmpty/train-t5.jsonl" \
+  --batch_size 4 \
+  --num_samples 100 \
+  --ops_order "put" \
+  --query_ops_order "put" \
+  --num_query_object 2 \
+  --sort_query_objects \
+  --counterfactual "rand_obj_rand_query_id" \
+  --circuit_root_path "${ROOT}/outputs/nnsight_patch_1put/${MODEL_NAME}/logp_notLastObj/n200" \
+  --load_in_8bit \
+  --mean_activation_cache_path "${ROOT}/outputs/nnsight_patch_1put/${MODEL_NAME}/logp_notLastObj/n200" \

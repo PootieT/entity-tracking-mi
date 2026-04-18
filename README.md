@@ -1,4 +1,4 @@
-# Do Language Models Track State Changes 
+# Do Language Models Track Entities Across State Changes?
 
 <p align="left">
   <a href="">
@@ -18,10 +18,10 @@ This repo contains the code to reproduce the paper `Do Language Models Track Ent
 # TL;DR
 
 We investigate how language models solve entity tracking with state changing operations (See Example data above). 
-We find that models *do not incrementally* keep track of global states (all box states) across context, instead dynamically 
-pull information together only after the query phrase. Multiple state changes are aggregated in **parallel** as models 
+We find that models *do not incrementally* keep track of global states (i.e. what objects are in each of the boxes) across context, instead dynamically 
+pull information together only after the query phrase. Multiple state changes (operations like `Put`, `Move`, and `Remove`) are aggregated in **parallel** as models 
 process the query at the last token across layers. We also find that the `Put` mechanism, which introduces objects to 
-existing box, works similarly like entity binding circuit (with different heads, but same function and uses same subspaces).
+existing box, works similarly like entity binding circuit (with different heads, but the same functionality and uses the same subspaces).
 The `Remove` operation works by tagging the removed object whose logit gets suppressed at query time. We call it the 
 `Global Remove Hypothesis` as it removes the object globally from context, regardless of which box the objects are removed 
 from! 

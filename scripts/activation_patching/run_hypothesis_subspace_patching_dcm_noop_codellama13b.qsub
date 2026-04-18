@@ -12,7 +12,7 @@
 ####$ -m ea
 
 # Give job a name
-#$ -N activation_patching_noop_gemma2b
+#$ -N noop_codellama13b
 
 # Combine output and error files into a single file
 #$ -j y
@@ -25,6 +25,7 @@
 # request 1 GPU
 #$ -l gpus=1
 #$ -l gpu_c=8.5
+#####$ -l gpu_type=V100
 #$ -l gpu_memory=47G
 
 # Submit an array job with 5 tasks
@@ -50,13 +51,11 @@ export NDIF_APIKEY="<your NDIF apikey>" # only if you are running large model on
 ROOT=$(pwd)
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
-index=$(($SGE_TASK_ID-1))
 
-MODEL="google/gemma-2-2b"
-MODEL_NAME="gemma-2-2b"
+MODEL="codellama/CodeLlama-13b-hf"
+MODEL_NAME="codellama-13b"
 
-
-cd nnsight_patching_experiments
+cd nnsight_patching_experiment
 
 # Counterfactual hypothesis
 # dcm_pos_phrase_ctf_op: position information (order ID)
@@ -66,6 +65,7 @@ for CTF in dcm_pos_phrase_ctf_op dcm_obj
 do
   python run_subspace_patching.py \
     --model $MODEL \
+    --load_in_8bit \
     --datafile "${ROOT}/data/boxes_altAlways_default_maxop12_5k/train-t5.jsonl" \
     --num_samples 200 \
     --ops_order "" \
@@ -84,3 +84,14 @@ do
     --lamb 6.0 \
     --verbose
 done
+
+
+# # layer 20, Full state patching val: 0.32
+# epochs=2, bs=8, lr=0.02, lamb=6.0 => acc=~0.19 rank=8
+# epochs=2, bs=8, lr=0.02, lamb=10.0 => acc=~0.16 rank=3
+# epochs=2, bs=8, lr=0.02, lamb=2.0 => acc=~0.16 rank=34
+# epochs=2, bs=8, lr=0.2, lamb=6.0 => acc=~0.12 rank=1
+# epochs=2, bs=8, lr=0.2, lamb=4.0 => acc=~0.14 rank=12
+# epochs=2, bs=8, lr=0.02, lamb=8.0 => acc=~0.18 rank=9
+# epochs=2, bs=8, lr=0.02, lamb=1.0 => acc=~0.27 rank=83  <- this might be the one?
+# epochs=2, bs=8, lr=0.02, lamb=0.5  => acc=~0.295 rank=144

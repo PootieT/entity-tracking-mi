@@ -1,0 +1,105 @@
+#!/bin/bash -l
+
+# Set SCC project
+#$ -P mcnet
+
+# Specify hard time limit for the job.
+#   The job will be aborted if it runs longer than this time.
+#   The default time is 12 hours
+#$ -l h_rt=12:00:00
+
+# Send an email when the job finishes or if it is aborted (by default no email is sent).
+####$ -m ea
+
+# Give job a name
+#$ -N eval_cross_circuit_1put_codellama13b
+
+# Combine output and error files into a single file
+#$ -j y
+#$ -o log-cross-eval
+
+# request 6 cores, each with 6 GB RAM at least
+#$ -pe omp 4
+###$ -l mem_per_core=6G
+
+# request 1 GPU
+#$ -l gpus=1
+#$ -l gpu_c=8.5
+#####$ -l gpu_type=V100
+#$ -l gpu_memory=47G
+
+# Submit an array job with 5 tasks
+#$ -t 1
+
+# Keep track of information related to the current job
+echo "=========================================================="
+echo "Start date : $(date)"
+echo "Job name : $JOB_NAME"
+echo "Job ID : $JOB_ID  $SGE_TASK_ID"
+echo "=========================================================="
+nvidia-smi
+
+module load cuda/11.8
+module load torch/2.1
+module load miniconda/23.11.0
+conda activate <your_env>
+
+# API keys and caching dirs
+export HF_HOME="<your hf home>"
+export HF_TOKEN="<your hf token>"
+ROOT=$(pwd)
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+export CUDA_LAUNCH_BLOCKING=1
+export TORCH_USE_CUDA_DSA=true
+
+
+MODEL="codellama/CodeLlama-13b-hf"
+MODEL_NAME="codellama-13b"
+
+cd nnsight_patching_experiment
+
+
+# to vary which of the object (put/description) is the circuit traced for,
+# you can vary the circuit_root_path
+
+for PATCH_GROUP in A B C D; do
+  PUT_CIRCUIT_PATH="${ROOT}/outputs/nnsight_patch_1put/${MODEL_NAME}/logp_lastObjOnly/n200"
+  DESC_CIRCUIT_PATH="${ROOT}/outputs/nnsight_patch_1put/${MODEL_NAME}/logp_notLastObj/n200"
+
+  # patch 1 group of description circuit into put circuit
+  python eval_circuits_cross_group.py \
+    --model $MODEL \
+    --datafile "${ROOT}/data/boxes_altAlways_1put_moreObj_noEmpty/train-t5.jsonl" \
+    --batch_size 4 \
+    --num_samples 100 \
+    --ops_order "put" \
+    --query_ops_order "put" \
+    --counterfactual "rand_obj_rand_query_id" \
+    --num_query_object 2 \
+    --sort_query_objects \
+    --circuit1_root_path $PUT_CIRCUIT_PATH \
+    --circuit2_root_path $DESC_CIRCUIT_PATH \
+    --mean_activation_cache_path "${ROOT}/outputs/nnsight_patch_1put/${MODEL_NAME}" \
+    --patch_group $PATCH_GROUP \
+    --load_in_8bit
+
+  # patch 1 group of put circuit into description circuit
+  python eval_circuits_cross_group.py \
+    --model $MODEL \
+    --datafile "${ROOT}/data/boxes_altAlways_1put_moreObj_noEmpty/train-t5.jsonl" \
+    --batch_size 4 \
+    --num_samples 100 \
+    --ops_order "put" \
+    --query_ops_order "put" \
+    --counterfactual "rand_obj_rand_query_id" \
+    --num_query_object 2 \
+    --sort_query_objects \
+    --circuit1_root_path $DESC_CIRCUIT_PATH \
+    --circuit2_root_path $PUT_CIRCUIT_PATH \
+    --mean_activation_cache_path "${ROOT}/outputs/nnsight_patch_1put/${MODEL_NAME}" \
+    --patch_group $PATCH_GROUP \
+    --load_in_8bit
+done
+
+
+
