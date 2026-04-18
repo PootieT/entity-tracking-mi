@@ -12,14 +12,16 @@
 #$ -M zilutang@bu.edu
 #$ -t 4-5
 
-module load cuda/11.8   # 11.2
-module load torch/2.1  # using installed 2.2.1 instead
+module load cuda/11.8
+module load torch/2.1
 module load miniconda/23.11.0
-conda activate /projectnb/mcnet/peter/entity-tracking-gemma/eap_env
-export TRANSFORMERS_CACHE=/projectnb2/llamagrp/peter/huggingface_cache/
-export HF_DATASETS_CACHE=/projectnb2/llamagrp/peter/huggingface_cache/
-export WANDB_PROJECT=entity-tracking-probing
-export ROOT=/projectnb/mcnet/peter/entity-tracking-probing
+conda activate <your_env>
+
+# API keys and caching dirs
+export HF_HOME="<your hf home>"
+export HF_TOKEN="<your hf token>"
+ROOT=$(pwd)
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
 index=$(($SGE_TASK_ID-1))
 
@@ -57,6 +59,8 @@ PROMPT_ALTFORM_SINGULAR \
 )
 PROMPT_FORMAT=${PROMPT_FORMATS[$index]}
 #PROMPT_FORMAT=PROMPT_ALLBOX_ALTFORM # INSTRUCTION PROMPT_ALTFORM PROMPT_ALLBOX_ALTFORM
+
+cd probe_experiments
 
 # Codellama-13b
 python inference.py \

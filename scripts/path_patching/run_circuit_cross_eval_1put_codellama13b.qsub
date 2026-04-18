@@ -56,7 +56,7 @@ export TORCH_USE_CUDA_DSA=true
 MODEL="codellama/CodeLlama-13b-hf"
 MODEL_NAME="codellama-13b"
 
-cd nnsight_patching_experiment
+cd nnsight_patching_experiments
 
 
 # to vary which of the object (put/description) is the circuit traced for,

@@ -58,7 +58,7 @@ index=$(($SGE_TASK_ID-1))
 MODEL="google/gemma-2-2b"
 MODEL_NAME="gemma-2-2b"
 
-cd nnsight_patching_experiment
+cd nnsight_patching_experiments
 
 # to vary which of the object (put/description) is the circuit traced for,
 # you can vary the circuit_root_path

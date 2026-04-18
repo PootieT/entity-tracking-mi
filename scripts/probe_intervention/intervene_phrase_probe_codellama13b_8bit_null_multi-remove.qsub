@@ -14,20 +14,23 @@
 #$ -M zilutang@bu.edu
 #$ -t 1-2
 
-module load cuda/11.8   # 11.2
-module load torch/2.1  # using installed 2.2.1 instead
+module load cuda/11.8
+module load torch/2.1
 module load miniconda/23.11.0
-conda activate /projectnb/mcnet/peter/entity-tracking-gemma/eap_env
-#export TRANSFORMERS_CACHE=/projectnb2/llamagrp/peter/huggingface_cache/
-export HF_HOME=/projectnb2/llamagrp/peter/huggingface_cache/
-export HF_DATASETS_CACHE=/projectnb2/llamagrp/peter/huggingface_cache/
-export WANDB_PROJECT=entity-tracking-probing
-export ROOT=/projectnb/mcnet/peter/entity-tracking-probing
+conda activate <your_env>
 
+# API keys and caching dirs
+export HF_HOME="<your hf home>"
+export HF_TOKEN="<your hf token>"
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+export CUDA_LAUNCH_BLOCKING=1
+export TORCH_USE_CUDA_DSA=true
 index=$(($SGE_TASK_ID-1))
 
-ROOT=/projectnb/mcnet/peter/entity-tracking-probing
-ALTROOT=/projectnb/mcnet/peter/entity-tracking-gemma
+ROOT=$(pwd)/probe_experiments
+
+# number: conditioning on Box ID
+# object: conditioning on objects
 
 PROBE_TYPES=(number object)
 PROBE_TYPE=${PROBE_TYPES[$index]}
@@ -36,14 +39,9 @@ PROBE_TYPE=${PROBE_TYPES[$index]}
 #LAYER_TYPES=(last_n first_n at_n)
 #LAYER_TYPE=${LAYER_TYPES[$index]}
 LAYER_TYPE=at_n
-# TODO
-# 1. currently --eval_local_numops just filter total query ops, but not based on type (e.g. 2 query remove), if we can do that then results will be more clear
-# 2. not sure if boxes_altAlways_default_maxop12_5k will contain enough examples, if not, may need to do baseline inference on the full set i.e. test-states-gpt.jsonl or sample specific datasets for this experiment
 
-for LAYER in 3 #{1..40}
+for LAYER in {1..40}
 do
-#  for NUMOPS in {1..7}
-#  do
     # remove tag
     echo "intervening on remove-tag ..."
     DATA_NAME=boxes_altAlways_default_maxop12_5k

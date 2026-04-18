@@ -54,7 +54,7 @@ export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 MODEL="google/gemma-2-2b"
 MODEL_NAME="gemma-2-2b"
 
-cd nnsight_patching_experiment
+cd nnsight_patching_experiments
 
 # top 10 heads
 #Value fetcher heads: [[22, 5], [18, 6], [22, 4], [19, 1], [20, 3], [23, 6], [16, 4], [22, 2], [15, 7], [25, 4]]

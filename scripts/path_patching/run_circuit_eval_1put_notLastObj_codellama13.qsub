@@ -57,7 +57,7 @@ index=$(($SGE_TASK_ID-1))
 MODEL="codellama/CodeLlama-13b-hf"
 MODEL_NAME="codellama-13b"
 
-cd nnsight_patching_experiment
+cd nnsight_patching_experiments
 
 
 python eval_circuits.py \
