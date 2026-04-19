@@ -234,43 +234,34 @@ def load_dataloader(
         dataloader (and dataset object if specified)
     """
     fix_random_seed(seed)
-    # debugging data for reproducing Nikhil's result
-    if "nikhil" in datafile:
-        raw_data = load_pp_data_nikhil(
-            tokenizer=tokenizer,
-            num_samples=num_samples,
-            data_file=datafile,
-            num_boxes=num_boxes
-        )
-    else:
-        raw_data = load_pp_data(
-            tokenizer=tokenizer,
-            num_samples=num_samples,
-            num_boxes=num_boxes,
-            data_file=datafile,
-            object_data_file=object_data_file,
-            ops_order=ops_order,
-            query_ops_order=query_ops_order,
-            min_numops=min_numops,
-            min_query_numops=min_query_numops,
-            max_initial_objects_per_box=max_initial_objects_per_box,
-            max_seq_len=max_seq_len,
-            counterfactual_format=counterfactual_format,
-            data_field=data_field,
-            token_step=token_step,
-            prepend_space_to_answer=prepend_space_to_answer,
-            model=model,
-            success_filter=success_filter,
-            operations_on_same_obj=operations_on_same_obj,
-            copy_filter=copy_filter,
-            num_query_object=num_query_object,
-            sort_query_objects=sort_query_objects,
-            put_globally_removed_filter=put_globally_removed_filter,
-            prompt_format=prompt_format,
-            remote=remote,
-        )
-        
-    # pdb.set_trace(header="finished loading pp data")
+
+    raw_data = load_pp_data(
+        tokenizer=tokenizer,
+        num_samples=num_samples,
+        num_boxes=num_boxes,
+        data_file=datafile,
+        object_data_file=object_data_file,
+        ops_order=ops_order,
+        query_ops_order=query_ops_order,
+        min_numops=min_numops,
+        min_query_numops=min_query_numops,
+        max_initial_objects_per_box=max_initial_objects_per_box,
+        max_seq_len=max_seq_len,
+        counterfactual_format=counterfactual_format,
+        data_field=data_field,
+        token_step=token_step,
+        prepend_space_to_answer=prepend_space_to_answer,
+        model=model,
+        success_filter=success_filter,
+        operations_on_same_obj=operations_on_same_obj,
+        copy_filter=copy_filter,
+        num_query_object=num_query_object,
+        sort_query_objects=sort_query_objects,
+        put_globally_removed_filter=put_globally_removed_filter,
+        prompt_format=prompt_format,
+        remote=remote,
+    )
+
     dataset = Dataset.from_dict(raw_data).with_format("numpy")
     dataloader = DataLoader(dataset, batch_size=batch_size, collate_fn=partial(pad_batch_collate_fn, tokenizer=tokenizer))
     if return_dataset:
@@ -1040,73 +1031,6 @@ def load_pp_data(
         "patch_locations": all_patch_locations,
         "dataset_indices": all_dataset_indices,
     }
-
-
-def load_pp_data_nikhil(
-    tokenizer,
-    num_samples,
-    data_file,
-    num_boxes,
-):
-    """
-    OUTDATED, NEED TO CHANGE OUTPUT FORMAT TO DICT
-
-    Load data for path patching task consisting of original and counterfactual
-    examples (random label and random object).
-
-    Copied from Nihil's project, which assume llama2 Tokenizer as input
-    """
-    (
-        input_ids,
-        last_token_indices,
-        output_ids,
-        _
-    ) = sample_box_data(tokenizer, num_samples, data_file, desired_ops_order=None)
-
-    all_base_input_ids = []
-    all_base_input_last_pos = []
-    all_source_input_ids = []
-    all_source_input_last_pos = []
-    all_ctf_output_ids = []
-    all_intervention_ids = []
-    all_incorrect_output_ids = []
-
-    for i in range(0, num_samples, num_boxes):
-        for j in range(num_boxes):
-            if i + j >= num_samples:
-                break
-
-            all_base_input_ids += [input_ids[i + j]]
-            all_base_input_last_pos += [last_token_indices[i + j]]
-            all_ctf_output_ids += [output_ids[i + j]]
-
-            random_source_index = random.choice(
-                list(range(0, num_samples - ((j + 1) % num_boxes), num_boxes))
-            )
-            random_source_index += (j + 1) % num_boxes
-            source_example = input_ids[random_source_index].clone()
-
-            # Change the query box label with a random alphabet
-            random_alphabet = chr(random.randint(65, 90))
-            random_alphabet_token = tokenizer(
-                random_alphabet, return_tensors="pt", add_special_tokens=False
-            ).input_ids[0, 0]
-            source_example[-3] = random_alphabet_token
-
-            all_source_input_ids += [source_example]
-            all_source_input_last_pos += [last_token_indices[random_source_index]]
-
-            all_intervention_ids += [0]
-
-    return (
-        all_base_input_ids,
-        all_base_input_last_pos,
-        all_source_input_ids,
-        all_source_input_last_pos,
-        all_ctf_output_ids,
-        all_intervention_ids,
-        all_incorrect_output_ids,
-    )
 
 
 # Helper function (plot)
