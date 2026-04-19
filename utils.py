@@ -2748,23 +2748,6 @@ def generate_counterfactual_dcm_remove_across(prompt: str, **kwargs) -> Dict[str
     return {"new_prompt": new_prompt, "labels": [removed_obj], "patch_locations": patch_locations}
 
 
-
-# def generate_counterfactual_cma_query_id(prompt: str, replace_indices: Optional[Union[List[int], slice]] = None) -> Tuple[str, str, Optional[List[str]]]:
-#     query_box = prompt[prompt.rfind("Box") + 4]
-#     # change all mentions of query box to a new box id (8)
-#     locs = list(find_all(prompt, f"Box {query_box}"))
-#     if replace_indices is not None:
-#         # last occurance is special, always added (otherwise prompt is invalid)
-#         locs = locs[:-1][replace_indices] + [locs[-1]]
-#
-#     new_prompt = prompt
-#     for loc in locs:
-#         new_prompt = new_prompt[:loc] + "Box 8" + new_prompt[loc + 5:]
-#
-#     # change clean prompt to query 8 (but not in its context)
-#     prompt = prompt[:locs[-1]] + "Box 8" + prompt[locs[-1] + 5:]
-#     return new_prompt, prompt, None
-
 ## for now copied from entity-tracking-probing.src.utils, but need to merge it once we refactor the repos
 def format_sentence(dat: Union[str, Dict[str, Any], List[int]], prompt_format: bool, prompt_prefix: Optional[str], chat_format: bool = False, tokenizer=None) -> str:
     if isinstance(dat, str):
@@ -2776,8 +2759,7 @@ def format_sentence(dat: Union[str, Dict[str, Any], List[int]], prompt_format: b
         sent_field = "context" if "context" in dat else "prefix"
         sent = dat[sent_field]
 
-    if prompt_format in ["PROMPT", "PROMPT_ALTFORM", "PROMPT_ALLBOX_ALTFORM", "INSTRUCTION", "PROMPT_ALTFORM_SINGULAR",
-                         "INSTRUCTION_SINGULAR", "default"]:
+    if prompt_format in ["PROMPT", "PROMPT_ALTFORM", "PROMPT_ALLBOX_ALTFORM", "INSTRUCTION", "default"]:
         # pdb.set_trace(header="formatting sentence with few-shot prompt")
         # just need to make sure if prompt_prefix is already in the example sentence
         # print(f"Formatting sentence with prompt_format {prompt_format} and prompt_prefix {prompt_prefix}")
