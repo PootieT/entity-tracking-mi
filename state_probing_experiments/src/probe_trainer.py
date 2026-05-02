@@ -3,22 +3,21 @@ Simple training loop; Boilerplate that could apply to any arbitrary neural netwo
 so nothing in this file really has anything to do with GPT specifically.
 """
 import os
+import math
 import logging
-
-from collections import defaultdict
 
 from tqdm import tqdm
 import numpy as np
 import json
-import sklearn
 import torch
+import torch.optim as optim
+from torch.optim.lr_scheduler import LambdaLR
 from torch.utils.data.dataloader import DataLoader
 from matplotlib import pyplot as plt
 
 logger = logging.getLogger(__name__)
 
-MAX_NUM_OPERATIONS = 12
-
+MAX_NUM_OPERATIONS = 13 # previously set to 12, but the max number of operations in the dataset is 13, so we set it to 13 
 
 class TrainerConfig:
     # optimization parameters
@@ -27,20 +26,18 @@ class TrainerConfig:
     learning_rate = 3e-4
     betas = (0.9, 0.95)
     grad_norm_clip = 1.0
-    weight_decay = 0.1  # only applied on matmul weights
+    weight_decay = 0.1 # only applied on matmul weights
     # learning rate decay params: linear warmup followed by cosine decay to 10% of original
     lr_decay = False
-    warmup_tokens = 375e6  # these two numbers come from the GPT-3 paper, but may not be good defaults elsewhere
-    final_tokens = 260e9  # (at what point we reach 10% of original LR)
+    warmup_tokens = 375e6 # these two numbers come from the GPT-3 paper, but may not be good defaults elsewhere
+    final_tokens = 260e9 # (at what point we reach 10% of original LR)
     # checkpoint settings
     ckpt_path = None
-    num_workers = 0  # for DataLoader
-    debug_train = False
+    num_workers = 0 # for DataLoader
 
     def __init__(self, **kwargs):
-        for k, v in kwargs.items():
+        for k,v in kwargs.items():
             setattr(self, k, v)
-
 
 class Trainer:
     def __init__(self, model, train_dataset, test_dataset, config):
@@ -48,37 +45,26 @@ class Trainer:
         self.train_dataset = train_dataset
         self.test_dataset = test_dataset
         self.config = config
-        self.scheduler = None
-        self.optimizer = None
 
         # take over whatever gpus are on the system
         self.device = 'cpu'
         if torch.cuda.is_available():
             self.device = f'cuda:{torch.cuda.current_device()}'
             self.model = torch.nn.DataParallel(self.model).to(self.device)
-        elif torch.backends.mps.is_available():
-            self.device = f'mps'
-            self.model = torch.nn.DataParallel(self.model).to(self.device)
+            
         # log something for plotting
         self.train_loss_cont = []
         self.test_loss_cont = []
         self.train_acc_cont = []
         self.test_acc_cont = []
-        # adding triv/non-triv acc
-        self.train_acc_nontriv_cont = []
-        self.test_acc_nontriv_cont = []
-        self.train_acc_triv_cont = []
-        self.test_acc_triv_cont = []
         # would be a list of T-long, each is a lits of MAX_NUM_OPERATIONS-long, for stratified accuracies        
         self.train_strat_acc_cont = []
         self.test_strat_acc_cont = []
-        # other metrics calculated using masks
-        self.train_acc_mask_cont = defaultdict(list)
-        self.test_acc_mask_cont = defaultdict(list)
-
+        self.training_history = [] # list of dict, each dict contains the training and testing metrics for each epoch, for easier analysis and plotting later
+        self.test_history = [] # list of dict, each dict contains the testing metrics for each epoch, for easier analysis and plotting later
     def flush_plot(self, save_path=None):
         # plt.close()
-        fig, axs = plt.subplots(1, 2, figsize=(20, 10), dpi=80, facecolor='w', edgecolor='k')
+        fig, axs = plt.subplots(1, 2, figsize=(20, 10), dpi= 80, facecolor='w', edgecolor='k')
         axs = axs.flat
         axs[0].plot(self.train_loss_cont, label="train")
         axs[0].plot(self.test_loss_cont, label="test")
@@ -92,18 +78,23 @@ class Trainer:
             fig.savefig(save_path)
         # plt.show()
         # return a figure object
+        
 
     def save_traces(self, ):
         tbd = {
-            "train_loss_cont": self.train_loss_cont, "test_loss_cont": self.test_loss_cont,
-            "train_acc_cont": self.train_acc_cont, "test_acc_cont": self.test_acc_cont,
-            "train_strat_acc_cont": self.train_strat_acc_cont, "test_strat_acc_cont": self.test_strat_acc_cont,
-            "train_acc_nontriv_cont": self.train_acc_nontriv_cont, "test_acc_nontriv_cont": self.test_acc_nontriv_cont,
-            "train_acc_triv_cont": self.train_acc_triv_cont, "test_acc_triv_cont": self.test_acc_triv_cont,
-            "train_acc_mask_cont": self.train_acc_mask_cont, "test_acc_mask_cont": self.test_acc_mask_cont,
+            "train_loss_cont": self.train_loss_cont, "test_loss_cont" :self.test_loss_cont, 
+            "train_acc_cont": self.train_acc_cont, "test_acc_cont": self.test_acc_cont, 
+            "train_strat_acc_cont": self.train_strat_acc_cont, "test_strat_acc_cont": self.test_strat_acc_cont, 
         }
         with open(os.path.join(self.config.ckpt_path, "tensorboard.txt"), "w") as f:
             f.write(json.dumps(tbd) + "\n")
+            
+        with open(os.path.join(self.config.ckpt_path, "training_history.jsonl"), "w") as f:
+            for record in self.training_history:
+                f.write(json.dumps(record) + "\n")
+        with open(os.path.join(self.config.ckpt_path, "test_history.jsonl"), "w") as f:
+            for record in self.test_history:
+                f.write(json.dumps(record) + "\n")
 
     def save_checkpoint(self):
         # DataParallel wrappers keep raw model object in .module attribute
@@ -113,231 +104,335 @@ class Trainer:
         torch.save(raw_model.state_dict(), os.path.join(self.config.ckpt_path, "checkpoint.ckpt"))
 
     def load_checkpoint(self):
-        torch.load(os.path.join(self.config.ckpt_path, "checkpoint.ckpt"), map_location=self.device)
+        torch.load( os.path.join(self.config.ckpt_path, "checkpoint.ckpt"), map_location=self.device)
 
-    def predict_old(self, prt=True):
+    def predict(self, prt=True):
         model, config = self.model, self.config
         model.train(False)
         data = self.test_dataset
         loader = DataLoader(data, shuffle=False, pin_memory=True,
                             batch_size=config.batch_size,
                             num_workers=config.num_workers)
-
+        
         pbar = enumerate(loader)
-        losses = []
-        totals_epoch = np.zeros(MAX_NUM_OPERATIONS,
-                                dtype=float)  # np.array of shape [MAX_NUM_OPERATIONS], for numops of 0 to MAX_NUM_OPERATIONS
-        hits_epoch = np.zeros(MAX_NUM_OPERATIONS,
-                              dtype=float)  # np.array of shape [MAX_NUM_OPERATIONS], for numops  of  0 to MAX_NUM_OPERATIONS
-        hits_nontriv_epoch = np.zeros(MAX_NUM_OPERATIONS,
-                                      dtype=float)  # np.array of shape [MAX_NUM_OPERATIONS], for numops  of  0 to MAX_NUM_OPERATIONS
-        hits_triv_epoch = np.zeros(MAX_NUM_OPERATIONS,
-                                      dtype=float)  # np.array of shape [MAX_NUM_OPERATIONS], for numops  of  0 to MAX_NUM_OPERATIONS
-
-        totals_epoch_nontriv = np.zeros(MAX_NUM_OPERATIONS,
-                                        dtype=float)  # np.array of shape [MAX_NUM_OPERATIONS], for numops  of  0 to MAX_NUM_OPERATIONS
-        totals_epoch_triv = np.zeros(MAX_NUM_OPERATIONS,
-                                        dtype=float)  # np.array of shape [MAX_NUM_OPERATIONS], for numops  of  0 to MAX_NUM_OPERATIONS
-
-        predictions = []
-
-        for _, (x, y, age, mentioned) in pbar:
-            x = x.to(self.device)  # [B, f]
-            y = y.to(self.device)  # [B, #task=64] 
-            age = age.to(self.device)  # [B, #task=64], in 0--59
-            mentioned = mentioned.to(self.device)  # [B, #task]
-            with torch.set_grad_enabled(False):
-                logits, loss = model(x, y)
-                loss = loss.mean()  # collapse all losses if they are scattered on multiple gpus
-                losses.append(loss.item())
-                totals_epoch += np.array([torch.sum(age == i).item() for i in range(MAX_NUM_OPERATIONS)]).astype(float)
-                totals_epoch_nontriv += np.array([torch.sum((age == i) * mentioned).item() for i in range(MAX_NUM_OPERATIONS)]).astype(float)
-                totals_epoch_triv += np.array([torch.sum((age == i) * (1-mentioned)).item() for i in range(MAX_NUM_OPERATIONS)]).astype(float)
-
-                y_hat = torch.argmax(logits, dim=-1, keepdim=False)  # [B, #task]
-                hits = y_hat == y  # [B, #task]
-                hits_nontrivial = (y_hat == y) * mentioned
-                hits_trivial = (y_hat == y) * (1-mentioned)
-                hits_epoch += np.array([torch.sum(hits * (age == i)).item() for i in range(MAX_NUM_OPERATIONS)]).astype(float)
-                hits_nontriv_epoch += np.array([torch.sum(hits_nontrivial * (age == i)).item() for i in range(MAX_NUM_OPERATIONS)]).astype(float)
-                hits_triv_epoch += np.array([torch.sum(hits_trivial * (age == i)).item() for i in range(MAX_NUM_OPERATIONS)]).astype(float)
-                predictions.append(y_hat.cpu().numpy())
-
-        test_loss = float(np.mean(losses))
-        test_acc = np.sum(hits_epoch).item() / (np.sum(totals_epoch).item() + 1e-20)
-        test_acc_nontriv = np.sum(hits_nontriv_epoch).item() / (np.sum(totals_epoch_nontriv).item() + 1e-20)
-        test_acc_triv = np.sum(hits_triv_epoch).item() / (np.sum(totals_epoch_triv).item() + 1e-20)
-
-        if prt:
-            logger.info(f"test loss {test_loss:.5f}; test acc {test_acc * 100:.2f}%;  test non-triv acc {test_acc_nontriv * 100:.2f}%;  test triv acc {test_acc_triv * 100:.2f}%")
-        predictions_matrix = np.concatenate(predictions, axis=0)
-        return predictions_matrix
-
-    def run_epoch(self, split, prt=True, epoch=-1):
-        model, config = self.model, self.config
-        num_classes = model.module.probe_class if hasattr(model, "module") else model.probe_class
-        is_train = split == 'train'
-        raw_model = model.module if hasattr(self.model, "module") else model
-        if is_train and self.optimizer is None:
-            self.optimizer, self.scheduler = raw_model.configure_optimizers(config)
-
-        model.train(is_train)
-        data = self.train_dataset if is_train else self.test_dataset
-        loader = DataLoader(data, shuffle=is_train, pin_memory=True,
-                            batch_size=config.batch_size,
-                            num_workers=config.num_workers)
-
         losses = []
         totals_epoch = np.zeros(MAX_NUM_OPERATIONS, dtype=float)  # np.array of shape [MAX_NUM_OPERATIONS], for numops of 0 to MAX_NUM_OPERATIONS
         hits_epoch = np.zeros(MAX_NUM_OPERATIONS, dtype=float)  # np.array of shape [MAX_NUM_OPERATIONS], for numops  of  0 to MAX_NUM_OPERATIONS
         hits_nontriv_epoch = np.zeros(MAX_NUM_OPERATIONS, dtype=float)  # np.array of shape [MAX_NUM_OPERATIONS], for numops  of  0 to MAX_NUM_OPERATIONS
-        hits_triv_epoch = np.zeros(MAX_NUM_OPERATIONS, dtype=float)  # np.array of shape [MAX_NUM_OPERATIONS], for numops  of  0 to MAX_NUM_OPERATIONS
-
-        if hasattr(data, 'mask_fields'):
-            hits_masks_epoch = {k:np.zeros(MAX_NUM_OPERATIONS,dtype=float) for k in data.mask_fields}
-            hits_masks_epoch["confusion_matrix"] = np.zeros((num_classes, num_classes), dtype=float)
-
-        totals_epoch_nontriv = np.zeros(MAX_NUM_OPERATIONS,
-                                        dtype=float)  # np.array of shape [MAX_NUM_OPERATIONS], for numops  of  0 to MAX_NUM_OPERATIONS
-        totals_epoch_triv = np.zeros(MAX_NUM_OPERATIONS,
-                                     dtype=float)  # np.array of shape [MAX_NUM_OPERATIONS], for numops  of  0 to MAX_NUM_OPERATIONS
-
-        if hasattr(data, 'mask_fields'):
-            totals_epoch_masks = {k: np.zeros(MAX_NUM_OPERATIONS, dtype=float) for k in data.mask_fields}
-
+        totals_epoch_nontriv = np.zeros(MAX_NUM_OPERATIONS, dtype=float) # np.array of shape [MAX_NUM_OPERATIONS], for numops  of  0 to MAX_NUM_OPERATIONS
         predictions = []
-        pbar = tqdm(enumerate(loader), total=len(loader), disable=not prt, leave=True) if is_train else enumerate(loader)
-        for it, (x, y, age, mentioned) in pbar:
+        gt_ls = []
+        mentioned_ls = []
+        
+        
+        for _, (x, y, age, mentioned) in pbar:
+            gt_ls.append(y.cpu().numpy())
+            mentioned_ls.append(mentioned.cpu().numpy())
+            
             x = x.to(self.device)  # [B, f]
-            y = y.to(self.device)  # [B, #task=64]
+            y = y.to(self.device)  # [B, #task=64] 
             age = age.to(self.device)  # [B, #task=64], in 0--59
-            if isinstance(mentioned, dict):
-                mentioned = {k: torch.stack(v).T.to(self.device) for k, v in mentioned.items()}
-            else:
-                mentioned = mentioned.to(self.device)  # [B, #task]
-
-            with torch.set_grad_enabled(is_train):
-                # pdb.set_trace(header="before fwd")
+            mentioned = mentioned.to(self.device) # [B, #task]
+            with torch.set_grad_enabled(False):
                 logits, loss = model(x, y)
-                loss = loss.mean()  # collapse all losses if they are scattered on multiple gpus
+                loss = loss.mean() # collapse all losses if they are scattered on multiple gpus
                 losses.append(loss.item())
+                totals_epoch += np.array([torch.sum(age == i).item() for i in range(MAX_NUM_OPERATIONS)]).astype(float)
+                totals_epoch_nontriv += np.array([torch.sum((age == i) * mentioned).item() for i in range(MAX_NUM_OPERATIONS)]).astype(float)
+
+                y_hat = torch.argmax(logits, dim=-1, keepdim=False)  # [B, #task]
+                hits = y_hat == y  # [B, #task]
+                hits_nontrivial = (y_hat == y) * mentioned
+                hits_epoch += np.array([torch.sum(hits * (age == i)).item() for i in range(MAX_NUM_OPERATIONS)]).astype(float)
+                hits_nontriv_epoch += np.array([torch.sum(hits_nontrivial * (age == i)).item() for i in range(MAX_NUM_OPERATIONS)]).astype(float)
+                predictions.append(y_hat.cpu().numpy())
                 
-                with torch.no_grad(): # just calculating metrics no need for gradients
+        test_loss = float(np.mean(losses))
+        test_acc = np.sum(hits_epoch).item() / np.sum(totals_epoch).item()
+        test_acc_nontriv = np.sum(hits_nontriv_epoch).item() / np.sum(totals_epoch_nontriv).item()
+
+        if prt: 
+            logger.info(f"test loss {test_loss:.5f}; test acc {test_acc*100:.2f}%;  test non-triv acc {test_acc_nontriv*100:.2f}%")
+        predictions_matrix = np.concatenate(predictions, axis=0)
+        
+        # need a confusion matrix for all classes, as well as trivial/non-trivial cases
+        # we have prediction matrix (binary or tenary, not convertable), ground truth y(binary or ternary, convertable) and mentioned matrix
+        # two cases, if it's a binary probe, we expand the confusion matrix to 2x3, if it's ternary, we just use 3x3
+        self.predictions = predictions_matrix
+        self.ground_truth = np.concatenate(gt_ls, axis=0)
+        self.mentioned = np.concatenate(mentioned_ls, axis=0)
+        # self.generate_confusion_matrix(
+        #     predictions_matrix,
+        #     np.concatenate(gt_ls, axis=0),
+        #     np.concatenate(mentioned_ls, axis=0)
+        # )
+        return predictions_matrix
+    
+    
+    
+   
+    def train(self, prt=True):
+        model, config = self.model, self.config
+        raw_model = model.module if hasattr(self.model, "module") else model
+        optimizer, scheduler = raw_model.configure_optimizers(config)
+
+        def run_epoch(split):
+            is_train = split == 'train'
+            model.train(is_train)
+            data = self.train_dataset if is_train else self.test_dataset
+            loader = DataLoader(data, shuffle=is_train, pin_memory=True,
+                                batch_size=config.batch_size,
+                                num_workers=config.num_workers)
+
+            losses = []
+            totals_epoch = np.zeros(MAX_NUM_OPERATIONS, dtype=float)  # np.array of shape [MAX_NUM_OPERATIONS], for numops of 0 to MAX_NUM_OPERATIONS
+            hits_epoch = np.zeros(MAX_NUM_OPERATIONS, dtype=float)  # np.array of shape [MAX_NUM_OPERATIONS], for numops  of  0 to MAX_NUM_OPERATIONS
+            hits_nontriv_epoch = np.zeros(MAX_NUM_OPERATIONS, dtype=float)  # np.array of shape [MAX_NUM_OPERATIONS], for numops  of  0 to MAX_NUM_OPERATIONS
+            totals_epoch_nontriv = np.zeros(MAX_NUM_OPERATIONS, dtype=float) # np.array of shape [MAX_NUM_OPERATIONS], for numops  of  0 to MAX_NUM_OPERATIONS
+            hits_trivial_epoch = np.zeros(MAX_NUM_OPERATIONS, dtype=float)  # np.array of shape [MAX_NUM_OPERATIONS], for numops  of  0 to MAX_NUM_OPERATIONS
+            totals_epoch_triv = np.zeros(MAX_NUM_OPERATIONS, dtype=float)  # np.array of shape [MAX_NUM_OPERATIONS], for numops  of  0 to MAX_NUM_OPERATIONS
+            predictions = []
+            recalls_epoch = np.zeros(MAX_NUM_OPERATIONS, dtype=float) # TP / (TP + FN)
+            precision_epoch = np.zeros(MAX_NUM_OPERATIONS, dtype=float) # TP / (TP + FP)
+            total_recalls_epoch = np.zeros(MAX_NUM_OPERATIONS, dtype=float) # TP + FN 
+            total_precision_epoch = np.zeros(MAX_NUM_OPERATIONS, dtype=float) # TP + FP
+            
+            
+            # Other metrics might be interesting -- False positive classes, are they non-trivial cases or just random?
+            # FP - not mentioned -- just random noise probably
+            # FP - mentioned -- confused with objects in other boxes, interesting.
+
+            total_FP_epoch = np.zeros(MAX_NUM_OPERATIONS, dtype=float)
+            total_TP_epoch = np.zeros(MAX_NUM_OPERATIONS, dtype=float)  
+            total_TN_epoch = np.zeros(MAX_NUM_OPERATIONS, dtype=float)
+            total_FN_epoch = np.zeros(MAX_NUM_OPERATIONS, dtype=float)
+            total_mentioned_epoch = np.zeros(MAX_NUM_OPERATIONS, dtype=float)
+            
+            total_TN_nontriv_epoch = np.zeros(MAX_NUM_OPERATIONS, dtype=float)
+            total_TN_triv_epoch = np.zeros(MAX_NUM_OPERATIONS, dtype=float)
+            FP_nontriv_epoch = np.zeros(MAX_NUM_OPERATIONS, dtype=float) # corresponding to false-positive in the non-trivial cases
+            FP_triv_epoch = np.zeros(MAX_NUM_OPERATIONS, dtype=float) # corresponding to false-positive in the trivial cases
+            
+            
+            
+            gt_ls = []
+            mentioned_ls = []
+            pbar = tqdm(enumerate(loader), total=len(loader), disable=not prt) if is_train else enumerate(loader)
+            for it, (x, y, age, mentioned) in pbar: # self.activations[index], self.examples[index], torch.tensor(self.num_ops[index]).to(torch.long), self.mentioned_objects[index]
+                x = x.to(self.device)  # [B, f]
+                y = y.to(self.device)  # [B, #task=64] 
+                age = age.to(self.device)  # [B, #task=64], in 0--59
+                mentioned = mentioned.to(self.device) # [B, #task]
+                with torch.set_grad_enabled(is_train):
+                    logits, loss = model(x, y)
+                    loss = loss.mean() # collapse all losses if they are scattered on multiple gpus
+                    losses.append(loss.item())
                     totals_epoch += np.array([torch.sum(age == i).item() for i in range(MAX_NUM_OPERATIONS)]).astype(float)
-                    if isinstance(mentioned, dict):
-                        for k, mask in mentioned.items():
-                            totals_epoch_masks[k] += np.array([torch.sum((age == i) * mask).item() for i in range(MAX_NUM_OPERATIONS)]).astype(float)
-                    else:
-                        totals_epoch_nontriv += np.array([torch.sum((age == i) * mentioned).item() for i in range(MAX_NUM_OPERATIONS)]).astype(float)
-                        totals_epoch_triv += np.array([torch.sum((age == i) * (1 - mentioned)).item() for i in range(MAX_NUM_OPERATIONS)]).astype(float)
-                
+                    totals_epoch_nontriv += np.array([torch.sum((age == i) * mentioned).item() for i in range(MAX_NUM_OPERATIONS)]).astype(float)
+                    totals_epoch_triv += np.array([torch.sum((age == i) * (1 - mentioned)).item() for i in range(MAX_NUM_OPERATIONS)]).astype(float)
+                    
                     y_hat = torch.argmax(logits, dim=-1, keepdim=False)  # [B, #task]
                     hits = y_hat == y  # [B, #task]
-                    hits_epoch += np.array([torch.sum(hits * (age == i)).item() for i in range(MAX_NUM_OPERATIONS)]).astype(float)
-                    if isinstance(mentioned, dict):
-                        for k, mask in mentioned.items():
-                            hits_masks_epoch[k] += np.array([torch.sum((y_hat == y) * mask * (age == i)).item() for i in range(MAX_NUM_OPERATIONS)]).astype(float)
-                        for task_idx in range(y.shape[1]):
-                            hits_masks_epoch["confusion_matrix"] += sklearn.metrics.confusion_matrix(y[:,task_idx].cpu().numpy(), y_hat[:,task_idx].cpu().numpy(), labels=list(range(num_classes)))
-                    else:
-                        hits_nontrivial = (y_hat == y) * mentioned
-                        hits_trivial = (y_hat == y) * (1 - mentioned)
-                        hits_nontriv_epoch += np.array([torch.sum(hits_nontrivial * (age == i)).item() for i in range(MAX_NUM_OPERATIONS)]).astype(float)
-                        hits_triv_epoch += np.array([torch.sum(hits_trivial * (age == i)).item() for i in range(MAX_NUM_OPERATIONS)]).astype(float)
+                    hits_nontrivial = (y_hat == y) * mentioned
+                    hits_trivial = hits * (1 - mentioned)  # hits that are trivial (not mentioned)
+                    hits_trivial_epoch += np.array([torch.sum(hits_trivial * (age == i)).item() for i in range(MAX_NUM_OPERATIONS)]).astype(float)
+                    hits_epoch += np.array([torch.sum(hits * (age == i)).item() for i in range
+                                            (MAX_NUM_OPERATIONS)]).astype(float)
+                    hits_nontriv_epoch += np.array([torch.sum(hits_nontrivial * (age == i)).item() for i in range(MAX_NUM_OPERATIONS)]).astype(float)
+                    predictions.append(y_hat.cpu().numpy())
+                    gt_ls.append(y.cpu().numpy())
+                    mentioned_ls.append(mentioned.cpu().numpy())
+                    
+                    recalls_epoch += np.array([torch.sum((y_hat == 1) * (y == 1) * (age == i)).item() for i in range(MAX_NUM_OPERATIONS)]).astype(float)
+                    precision_epoch += np.array([torch.sum((y_hat == 1) * (y == 1) * (age == i)).item() for i in range(MAX_NUM_OPERATIONS)]).astype(float)
+                    total_recalls_epoch += np.array([torch.sum((y == 1) * (age == i)).item() for i in range(MAX_NUM_OPERATIONS)]).astype(float)
+                    total_precision_epoch += np.array([torch.sum((y_hat == 1) * (age == i)).item() for i in range(MAX_NUM_OPERATIONS)]).astype(float)
+                    
+                    
+                    total_FP_epoch += np.array([torch.sum((y_hat == 1) * (y == 0) * (age == i)).item() for i in range(MAX_NUM_OPERATIONS)]).astype(float)
+                    FP_nontriv_epoch += np.array([torch.sum((y_hat == 1) * (y == 0) * mentioned * (age == i)).item() for i in range(MAX_NUM_OPERATIONS)]).astype(float)
+                    FP_triv_epoch += np.array([torch.sum((y_hat == 1) * (y == 0) * (1 - mentioned) * (age == i)).item() for i in range(MAX_NUM_OPERATIONS)]).astype(float)
+                    
+                    
+                    total_TP_epoch += np.array([torch.sum((y_hat == 1) * (y == 1) * (age == i)).item() for i in range(MAX_NUM_OPERATIONS)]).astype(float)
+                    total_TN_epoch += np.array([torch.sum((y_hat == 0) * (y == 0) * (age == i)).item() for i in range(MAX_NUM_OPERATIONS)]).astype(float)
+                    total_FN_epoch += np.array([torch.sum((y_hat == 0) * (y == 1) * (age == i)).item() for i in range(MAX_NUM_OPERATIONS)]).astype(float)
+                    total_mentioned_epoch += np.array([torch.sum(mentioned * (age == i)).item() for i in range(MAX_NUM_OPERATIONS)]).astype(float)
+                    total_TN_nontriv_epoch += np.array([torch.sum((y_hat == 0) * (y == 0) * mentioned * (age == i)).item() for i in range(MAX_NUM_OPERATIONS)]).astype(float)
+                    total_TN_triv_epoch += np.array([torch.sum((y_hat == 0) * (y == 0) * (1 - mentioned) * (age == i)).item() for i in range(MAX_NUM_OPERATIONS)]).astype(float)
+                    
+                    #print(hits_nontriv_epoch)
+                    #print(totals_epoch_nontriv)
 
-                predictions.append(y_hat.cpu().numpy())
 
+                if is_train:
+                    # backprop and update the parameters
+                    model.zero_grad()
+                    loss.backward()
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), config.grad_norm_clip)
+                    optimizer.step()
+                    mean_loss = float(np.mean(losses))
+                    mean_acc = np.sum(hits_epoch).item() / np.sum(totals_epoch).item()
+                    mean_acc_nontriv = np.sum(hits_nontriv_epoch).item() / np.sum(totals_epoch_nontriv).item()
+                    mean_recall = np.sum(recalls_epoch).item() / np.sum(total_recalls_epoch).item() if np.sum(total_recalls_epoch).item() > 0 else 0.0
+                    mean_precision = np.sum(precision_epoch).item() / np.sum(total_precision_epoch).item() if np.sum(total_precision_epoch).item() > 0 else 0.0
+                    FP_nontriv_rate = np.sum(FP_nontriv_epoch).item() / np.sum(total_FP_epoch).item() if np.sum(total_FP_epoch).item() > 0 else 0.0
+                    FP_triv_rate = np.sum(FP_triv_epoch).item() / np.sum(total_FP_epoch).item() if np.sum(total_FP_epoch).item() > 0 else 0.0
+
+
+                    # Some stats: Total Samples, TP (true positive) , TN (true negative: not mentioned + elsewhere), FP (not mentioned + elsewherem, classified as positive) , FN (present, classified as negative),
+
+                    # logger.info(f"STAT: Total {np.sum(totals_epoch).item()}, TP {np.sum(hits_nontriv_epoch).item()}, TN {np.sum(total_TN_epoch).item()}, FP {np.sum(FP_nontriv_epoch).item()}, FN {np.sum(total_FN_epoch).item()}, FP_triv {np.sum(FP_triv_epoch).item()}, FP_non_triv {np.sum(FP_nontriv_epoch).item()}, Total_mentioned {np.sum(total_mentioned_epoch).item()}, Total_TN_nontriv {np.sum(total_TN_nontriv_epoch).item()}, Total_TN_triv {np.sum(total_TN_triv_epoch).item()}")
+
+                    lr = optimizer.param_groups[0]['lr']
+                    pbar.set_description(f"epoch {epoch+1}: train loss {mean_loss:.5f}; lr {lr:.2e}; train acc {mean_acc*100:.2f}%; train non-triv acc: {mean_acc_nontriv*100:.2f}; trivial acc: {np.sum(hits_trivial_epoch).item() / np.sum(totals_epoch_triv).item()*100:.2f}%; recall {mean_recall*100:.2f}%; precision {mean_precision*100:.2f}%; FP non-triv rate {FP_nontriv_rate*100:.2f}%; FP triv rate {FP_triv_rate*100:.2f}%")
+                    self.training_history.append({
+                        "epoch": epoch+1,
+                        "train_loss": mean_loss,
+                        "train_acc": mean_acc,
+                        "train_nontriv_acc": mean_acc_nontriv,
+                        "train_triv_acc": np.sum(hits_trivial_epoch).item() / np.sum(totals_epoch_triv).item() if np.sum(totals_epoch_triv).item() > 0 else 0.0,
+                        "train_recall": mean_recall,
+                        "train_precision": mean_precision,
+                        "FP_nontriv_rate": FP_nontriv_rate,
+                        "FP_triv_rate": FP_triv_rate,
+                    })
             if is_train:
-                # backprop and update the parameters
-                model.zero_grad()
-                loss.backward()
-                torch.nn.utils.clip_grad_norm_(model.parameters(), config.grad_norm_clip)
-                self.optimizer.step()
-                mean_loss = float(np.mean(losses))
-                mean_acc = np.sum(hits_epoch).item() / np.sum(totals_epoch).item()
-                lr = self.optimizer.param_groups[0]['lr']
+                self.train_loss_cont.append(mean_loss)
+                self.train_acc_cont.append(mean_acc)
+                self.train_strat_acc_cont.append((hits_epoch / totals_epoch).tolist())
 
-                if isinstance(mentioned, dict):
-                    mean_acc_masks = {}
-                    report_str = ""
-                    for k, mask in mentioned.items():
-                        mean_acc_masks[k] = np.sum(hits_masks_epoch[k]).item() / (np.sum(totals_epoch_masks[k]).item() + 1e-20)
-                        if "local" in k:
-                            report_str += f"{k}: {mean_acc_masks[k] * 100:.2f}%"
-                    pbar.set_description(f"Train epoch {epoch + 1}: loss {mean_loss:.5f}; lr {lr:.2e}; acc {mean_acc * 100:.2f}%; {report_str}")
-                else:
-                    mean_acc_nontriv = np.sum(hits_nontriv_epoch).item() / (np.sum(totals_epoch_nontriv).item() + 1e-20)
-                    mean_acc_triv = np.sum(hits_triv_epoch).item() / (np.sum(totals_epoch_triv).item() + 1e-20)
-                    pbar.set_description(f"Train epoch {epoch + 1}: loss {mean_loss:.5f}; lr {lr:.2e}; acc {mean_acc * 100:.2f}%; non-triv acc: {mean_acc_nontriv * 100:.2f}; triv acc: {mean_acc_triv * 100:.2f}")
-                pbar.refresh()
-        if is_train:
-            self.train_loss_cont.append(mean_loss)
-            self.train_acc_cont.append(mean_acc)
-            self.train_strat_acc_cont.append((hits_epoch / totals_epoch).tolist())
-            if hasattr(data, 'mask_fields'):
-                for k, acc in mean_acc_masks.items():
-                    self.train_acc_mask_cont[k].append(acc)
-            else:
-                self.train_acc_nontriv_cont.append(mean_acc_nontriv)
-                self.train_acc_triv_cont.append(mean_acc_triv)
-        else:  # eval
-            test_loss = float(np.mean(losses))
-            test_acc = np.sum(hits_epoch).item() / np.sum(totals_epoch).item()
-            if hasattr(data, 'mask_fields'):
-                test_acc_masks = {}
-                report_str = ""
-                for k in hits_masks_epoch.keys():
-                    if "confusion_matrix" in k:
-                        test_acc_masks[k] = hits_masks_epoch[k]
-                    else:
-                        test_acc_masks[k] = np.sum(hits_masks_epoch[k]).item() / (np.sum(totals_epoch_masks[k]).item() + 1e-20)
-                        report_str += f"{k}: {test_acc_masks[k] * 100:.2f}%; "
+            if not is_train:
+                test_loss = float(np.mean(losses))
+                scheduler.step(test_loss)
+                test_acc = np.sum(hits_epoch).item() / np.sum(totals_epoch).item()
+                test_acc_nontriv = np.sum(hits_nontriv_epoch).item() / np.sum(totals_epoch_nontriv).item()
+                test_acc_trivial = np.sum(hits_trivial_epoch).item() / np.sum(totals_epoch_triv).item()
+                
+                test_recall = np.sum(recalls_epoch).item() / np.sum(total_recalls_epoch).item() if np.sum(total_recalls_epoch).item() > 0 else 0.0
+                test_precision = np.sum(precision_epoch).item() / np.sum(total_precision_epoch).item() if np.sum(total_precision_epoch).item() > 0 else 0.0
+                
+                test_fp_nontriv_rate = np.sum(FP_nontriv_epoch).item() / np.sum(total_FP_epoch).item() if np.sum(total_FP_epoch).item() > 0 else 0.0
+                test_fp_triv_rate = np.sum(FP_triv_epoch).item() / np.sum(total_FP_epoch).item() if np.sum(total_FP_epoch).item() > 0 else 0.0
+                
 
-                if prt:
-                    logger.info(f"confusion matrix:\n{hits_masks_epoch['confusion_matrix']}")
-                    logger.info(f"test loss {test_loss:.5f}; acc {test_acc * 100:.2f}%; {report_str}")
-            else:
-                test_acc_nontriv = np.sum(hits_nontriv_epoch).item() / (np.sum(totals_epoch_nontriv).item() + 1e-20)
-                test_acc_triv = np.sum(hits_triv_epoch).item() / (np.sum(totals_epoch_triv).item() + 1e-20)
-                if prt:
-                    logger.info(f"test loss {test_loss:.5f}; acc {test_acc * 100:.2f}%; non-triv acc {test_acc_nontriv * 100:.2f}%;  test triv acc {test_acc_triv * 100:.2f}%")
-            self.test_loss_cont.append(test_loss)
-            self.test_acc_cont.append(test_acc)
-            self.test_strat_acc_cont.append((hits_epoch / totals_epoch).tolist())
-            if hasattr(data, 'mask_fields'):
-                for k, acc in test_acc_masks.items():
-                    if isinstance(acc, np.ndarray):
-                        acc = acc.tolist()
-                    self.test_acc_mask_cont[k].append(acc)
-            else:
-                self.test_acc_nontriv_cont.append(test_acc_nontriv)
-                self.test_acc_triv_cont.append(test_acc_triv)
+                if prt: 
+                    # also log tp, fp, fn for overall
+                    logger.info(f"STAT: Total {np.sum(totals_epoch).item()}, TP {np.sum(hits_nontriv_epoch).item()}, TN {np.sum(total_TN_epoch).item()}, FP {np.sum(total_FP_epoch).item()}, FN {np.sum(total_FN_epoch).item()}, FP_triv {np.sum(FP_triv_epoch).item()}, FP_non_triv {np.sum(FP_nontriv_epoch).item()}, Total_mentioned {np.sum(total_mentioned_epoch).item()}, Total_TN_nontriv {np.sum(total_TN_nontriv_epoch).item()}, Total_TN_triv {np.sum(total_TN_triv_epoch).item()}")
 
-            predictions_matrix = np.concatenate(predictions, axis=0)
-            return test_loss, predictions_matrix
+                    logger.info(f"test loss {test_loss:.5f}; test acc {test_acc*100:.2f}%;  test non-triv acc {test_acc_nontriv*100:.2f}%;    test trivial acc {test_acc_trivial*100:.2f}%; recall {test_recall*100:.2f}%; precision {test_precision*100:.2f}%; FP non-triv rate {test_fp_nontriv_rate*100:.2f}%; FP triv rate {test_fp_triv_rate*100:.2f}%")
+                self.test_history.append({
+                    "epoch": epoch+1,
+                    "test_loss": test_loss,
+                    "test_acc": test_acc,
+                    "test_nontriv_acc": test_acc_nontriv,
+                    "test_triv_acc": test_acc_trivial,
+                    "test_recall": test_recall,
+                    "test_precision": test_precision,
+                    "test_fp_nontriv_rate": test_fp_nontriv_rate,
+                    "test_fp_triv_rate": test_fp_triv_rate,
+                })
+                self.test_loss_cont.append(test_loss)
+                self.test_acc_cont.append(test_acc)
+                self.test_strat_acc_cont.append((hits_epoch / totals_epoch).tolist())
+                predictions_matrix = np.concatenate(predictions, axis=0)
+                self.predictions = predictions_matrix
+                self.ground_truth = np.concatenate(gt_ls, axis=0)
+                self.mentioned = np.concatenate(mentioned_ls, axis=0)
+                return test_loss, predictions_matrix
 
-    def predict(self, prt=True):
-        test_loss, predictions_matrix = self.run_epoch('test', prt)
-        return predictions_matrix
-
-    def train(self, prt=True):
         best_loss = float('inf')
         self.tokens = 0  # counter used for learning rate decay
-        for epoch in range(self.config.max_epochs):
-            self.run_epoch('train', prt, epoch)
+        
+        for epoch in range(config.max_epochs):
+            run_epoch('train')
             if self.test_dataset is not None:
-                test_loss, predictions_matrix = self.run_epoch('test', prt)
-                self.scheduler.step(test_loss)
-                if self.config.debug_train:
-                    np.save(f"{self.config.ckpt_path}/predictions_epoch{epoch}.npy", predictions_matrix.astype(int))
-                
+                test_loss, predictions_matrix = run_epoch('test')
                 if test_loss < best_loss:
                     best_loss = test_loss
                     self.save_checkpoint()
-
+                
         # return predictions after last epoch
         return predictions_matrix
+    
+    def generate_confusion_matrix(self, file_path=None):
+        """
+        Generate a confusion matrix for the predictions against the ground truth.
+        If mentioned is provided, it will be used to filter out trivial cases.
+        predictions: numpy array of shape [N, N_Obj] (binary or ternary)
+        ground_truth: numpy array of shape [N, N_Obj] (binary or ternary)
+        mentioned: numpy array of shape [N, N_Obj] (binary), optional
+        """
+        
+        def print_confusion_matrix(cm, pred_labels, true_labels, file_path=file_path):
+            with open(file_path, "w") as f:
+                f.write("Confusion Matrix:\n")
+                f.write(" " * 22 + " | " + " | ".join(f"{label:^20}" for label in true_labels) + " |\n")
+                f.write("-" * (25 + len(true_labels) * 24) + "\n")
+                for i, row in enumerate(cm):
+                    row_str = " | ".join(f"{val:^20}" for val in row)
+                    f.write(f"{pred_labels[i]:<22} | {row_str} |\n")
+                f.write("-" * (25 + len(true_labels) * 24) + "\n")
+                
+        predictions = self.predictions
+        ground_truth = self.ground_truth
+        mentioned = self.mentioned 
+        D, N = predictions.shape
+        # logging.info(f"predictions shape: {predictions.shape}, ground_truth shape: {ground_truth.shape}, mentioned shape: {mentioned.shape}")
+        assert D == ground_truth.shape[0] and N == ground_truth.shape[1], "Predictions and ground truth must have the same shape."
+        assert D == mentioned.shape[0] and N == mentioned.shape[1], "Predictions and mentioned must have the same shape."
+        
+        assert np.all(np.isin(predictions, [0, 1, 2])), "Predictions must be binary or ternary (0, 1, or 2)."
+        assert np.all(np.isin(ground_truth, [0, 1, 2])), "Ground truth must be binary or ternary (0, 1, or 2)."
+        
+        y_three_class = np.full_like(ground_truth, fill_value=0)  
+        num_class = predictions.max() + 1  # 0 or 1 or 2
+        y_three_class[mentioned == 1] = ground_truth[mentioned == 1] + 1 if num_class == 2 else ground_truth[mentioned == 1]# y ∈ {0,1} → {1,2}
+        assert y_three_class.shape == ground_truth.shape, "y_three_class must have the same shape as ground_truth."
+        assert y_three_class.shape == predictions.shape, "y_three_class must have the same shape as predictions."
+        unique_preds = np.unique(predictions)
 
+        if set(unique_preds.tolist()).issubset({0, 1}):
+            cm = np.zeros((2, 3), dtype=int)
+            for i in range(D):
+                for j in range(N):
+                    pred = predictions[i, j].astype(int)  
+                    true = y_three_class[i, j].astype(int)
+                    cm[pred, true] += 1
+            print_confusion_matrix(
+                cm,
+                pred_labels=['0 (pred: not exists)', '1 (pred: exists)'],
+                true_labels=['0 (GT: not mentioned)', '1 (GT: not exists)', '2 (GT: exists)']
+            )
+
+        elif set(unique_preds.tolist()).issubset({0, 1, 2}):
+            
+            cm = np.zeros((3, 3), dtype=int)
+            for i in range(D):
+                for j in range(N):
+                    pred = predictions[i, j].astype(int)  # ensure it's an integer for indexing
+                    true = y_three_class[i, j].astype(int)  # ensure it's an integer for indexing
+                    # logger.info(f"pred: {pred}, true: {true}, mentioned: {mentioned[i,j]}")
+                    cm[pred, true] += 1
+            print_confusion_matrix(
+                cm,
+                pred_labels=[
+                    '0 (pred: not mentioned)',
+                    '1 (pred: not exists)',
+                    '2 (pred: exists)'
+                ],
+                true_labels=[
+                    '0 (GT: not mentioned)',
+                    '1 (GT: not exists)',
+                    '2 (GT: exists)'
+                ]
+            )
+        else:
+            raise ValueError("Predictions must contain only {0,1} or {0,1,2}")
+        
+        
+        
+        
 class Mention_Trainer:
     def __init__(self, model, train_dataset, test_dataset, config):
         self.model = model
@@ -658,4 +753,81 @@ class Mention_Trainer:
                 
         # return predictions after last epoch
         return predictions_matrix
+    
+    def generate_confusion_matrix(self, file_path=None):
+        """
+        Generate a confusion matrix for the predictions against the ground truth.
+        If mentioned is provided, it will be used to filter out trivial cases.
+        predictions: numpy array of shape [N, N_Obj] (binary or ternary)
+        ground_truth: numpy array of shape [N, N_Obj] (binary or ternary)
+        mentioned: numpy array of shape [N, N_Obj] (binary), optional
+        """
+        
+        def print_confusion_matrix(cm, pred_labels, true_labels, file_path=file_path):
+            with open(file_path, "w") as f:
+                f.write("Confusion Matrix:\n")
+                f.write(" " * 22 + " | " + " | ".join(f"{label:^20}" for label in true_labels) + " |\n")
+                f.write("-" * (25 + len(true_labels) * 24) + "\n")
+                for i, row in enumerate(cm):
+                    row_str = " | ".join(f"{val:^20}" for val in row)
+                    f.write(f"{pred_labels[i]:<22} | {row_str} |\n")
+                f.write("-" * (25 + len(true_labels) * 24) + "\n")
+                
+        predictions = self.predictions
+        ground_truth = self.ground_truth
+        mentioned = self.mentioned 
+        D, N = predictions.shape
+        # logging.info(f"predictions shape: {predictions.shape}, ground_truth shape: {ground_truth.shape}, mentioned shape: {mentioned.shape}")
+        assert D == ground_truth.shape[0] and N == ground_truth.shape[1], "Predictions and ground truth must have the same shape."
+        assert D == mentioned.shape[0] and N == mentioned.shape[1], "Predictions and mentioned must have the same shape."
+        
+        assert np.all(np.isin(predictions, [0, 1, 2])), "Predictions must be binary or ternary (0, 1, or 2)."
+        assert np.all(np.isin(ground_truth, [0, 1, 2])), "Ground truth must be binary or ternary (0, 1, or 2)."
+        
+        y_three_class = np.full_like(ground_truth, fill_value=0)  
+        num_class = predictions.max() + 1  # 0 or 1 or 2
+        y_three_class[mentioned == 1] = ground_truth[mentioned == 1] + 1 if num_class == 2 else ground_truth[mentioned == 1]# y ∈ {0,1} → {1,2}
+        assert y_three_class.shape == ground_truth.shape, "y_three_class must have the same shape as ground_truth."
+        assert y_three_class.shape == predictions.shape, "y_three_class must have the same shape as predictions."
+        unique_preds = np.unique(predictions)
+
+        if set(unique_preds.tolist()).issubset({0, 1}):
+            cm = np.zeros((2, 3), dtype=int)
+            for i in range(D):
+                for j in range(N):
+                    pred = predictions[i, j].astype(int)  
+                    true = y_three_class[i, j].astype(int)
+                    cm[pred, true] += 1
+            print_confusion_matrix(
+                cm,
+                pred_labels=['0 (pred: not exists)', '1 (pred: exists)'],
+                true_labels=['0 (GT: not mentioned)', '1 (GT: not exists)', '2 (GT: exists)']
+            )
+
+        elif set(unique_preds.tolist()).issubset({0, 1, 2}):
+            
+            cm = np.zeros((3, 3), dtype=int)
+            for i in range(D):
+                for j in range(N):
+                    pred = predictions[i, j].astype(int)  # ensure it's an integer for indexing
+                    true = y_three_class[i, j].astype(int)  # ensure it's an integer for indexing
+                    # logger.info(f"pred: {pred}, true: {true}, mentioned: {mentioned[i,j]}")
+                    cm[pred, true] += 1
+            print_confusion_matrix(
+                cm,
+                pred_labels=[
+                    '0 (pred: not mentioned)',
+                    '1 (pred: not exists)',
+                    '2 (pred: exists)'
+                ],
+                true_labels=[
+                    '0 (GT: not mentioned)',
+                    '1 (GT: not exists)',
+                    '2 (GT: exists)'
+                ]
+            )
+        else:
+            raise ValueError("Predictions must contain only {0,1} or {0,1,2}")
+        
+        
     

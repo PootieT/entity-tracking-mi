@@ -21,9 +21,6 @@ import anyio
 
 from nnsight import LanguageModel
 import sys
-sys.path.append('./zaq_exps')  
-from zqa_exps.configs import setup_zqa_configs
-setup_zqa_configs()
 
 MAX_NEW_TOKENS = 50
 MAX_REMOTE_ATTEMPTS = 10

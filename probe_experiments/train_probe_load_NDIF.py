@@ -21,18 +21,7 @@ from src.probe_model import BatteryProbeClassification, ObjectLocationProbeClass
     BatteryProbeClassificationTwoLayer
 import pickle
 
-# some files we need:
-# 1. ckpt root path
-# 2. model_representation_path
 
-
-"""Notes:
-    - What is the purpose of this code?
-    - What are Probes?
-    - What are the backbones?
-    - What the dataset looks like?
-    - The probes are trained for what? I.E. what are they predicting?
-    """
 
 _MAX_SOURCE_TEXT_LENGTH = {
     "t5": 512,
