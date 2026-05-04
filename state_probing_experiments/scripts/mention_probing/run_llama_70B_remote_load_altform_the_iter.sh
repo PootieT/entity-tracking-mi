@@ -8,7 +8,7 @@ do
     echo --------PROBING LAYER $layer--------
     python train_probe_LLM.py \
         --model_type llama \
-        --exp_name mentioned \
+        --exp_name mention \
         --dataset_path $ROOT/../data/boxes_altAlways_default_maxop12_5k \
         --model_path meta-llama/Meta-Llama-3.1-70B\
         --layer $layer \

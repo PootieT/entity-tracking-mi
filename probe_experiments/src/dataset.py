@@ -19,7 +19,7 @@ from .utils import get_objects, get_box_ids, is_object, is_box_id, get_token_pos
 import sys
 sys.path.append("../..")
 from utils import format_sentence, PROMPT, PROMPT_ALTFORM, PROMPT_ALLBOX_ALTFORM, INSTRUCTION
-
+from .state_evals import generate_state_matrix, detect_local_removals, detect_removals
 
 _GPT_MAX_LENGTH = 512
 NUM_BOXES = 7

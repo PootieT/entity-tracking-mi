@@ -33,8 +33,8 @@ do
       --object_location \
       --condition_on the \
       --load_model_representation \
-      --model_representation_path $ROOT/model_cache/codellama13b_the \
-      --checkpoint_root $ROOT/probe_checkpoints/codellama-13b/
+      --model_representation_path $ROOT/model_cache/llama3.1-70b_the \
+      --checkpoint_root $ROOT/probe_checkpoints/llama3.1-70b/
 done
 
 

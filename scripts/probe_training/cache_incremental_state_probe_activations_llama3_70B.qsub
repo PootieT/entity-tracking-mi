@@ -50,7 +50,7 @@ torchrun --nproc-per-node 2 --rdzv-endpoint "localhost:${MAIN_PORT}" probe_exper
     --condition_on $CONDITION \
     --save_model_representation \
     --model_representation_path $ROOT/model_cache/boxes_data_altForm_default/llama3.1-70b_$SAVE_SUFFIX \
-    --checkpoint_root $ROOT/probe_checkpoint/boxes_data_altForm_default/codellama-13b \
+    --checkpoint_root $ROOT/probe_checkpoint/boxes_data_altForm_default/llama3.1-70b \
     --distributed \
 
 

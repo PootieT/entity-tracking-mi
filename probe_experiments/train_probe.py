@@ -241,13 +241,14 @@ def get_activations_from_data(act_all_container, act_container, args, end_idx, i
                 batch_token_pos = [[pos-1 for pos in token_pos] for token_pos in batch_token_pos]
         elif "number_all" in args.condition_on or "object_all" in args.condition_on:
             batch_token_pos = [get_token_pos_given_span_types(input_ids[:-4], tokenizer, args.condition_on, object_list) for input_ids in ids]
-        elif is_incremental_state_data:
-            # the batch_token_pos is the same as box_id_positions
-            batch_token_pos = box_id_positions
-            assert len(batch_token_pos) == len(ids), f"Batch token positions {len(batch_token_pos)} does not match batch size {len(ids)}!"
-
         else:
             batch_token_pos = [-1] *len(ids)
+            
+        if is_incremental_state_data:
+            # the batch_token_pos is the same as box_id_positions
+            batch_token_pos = box_id_positions # now it's a list of list of single token tensors, now flatten to a 1-d list of ints
+            # to a 1-d int
+            batch_token_pos = [[btp.item() for btp in batch_token_pos]]
 
         if args.save_model_representation:
             # pdb.set_trace(header="entering ndif remote")

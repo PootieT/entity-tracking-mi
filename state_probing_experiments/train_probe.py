@@ -88,7 +88,7 @@ def main():
                         default='number')
     
     
-    parser.add_argument('--exp_name', choices=["binary", "mentioned", "global", "incremental_local_state"], type=str, default="binary",)
+    parser.add_argument('--exp_name', choices=["binary", "mention", "global", "incremental_local_state"], type=str, default="binary",)
 
     # Non-linear probe
     parser.add_argument('--mid_dim',
@@ -787,7 +787,7 @@ def main():
         
         
     # pdb.set_trace(header="debug build ds")
-    if args.exp_name == "mentioned":
+    if args.exp_name == "mention":
         probing_dataset_train = MentionedProbeDataLoader(act_container_train, dataset_path_train, object_map, include_empty=not args.exclude_empty, min_prev_objects=args.condition_on_obj)
         probing_dataset_test = MentionedProbeDataLoader(act_container_test, dataset_path_test, object_map, include_empty=not args.exclude_empty, min_prev_objects=args.condition_on_obj)
     elif args.exp_name == "binary":
@@ -861,7 +861,7 @@ def main():
     print(f"Batch size: {tconf.batch_size}")
     
     
-    if args.exp_name == "mentioned":
+    if args.exp_name == "mention":
         trainer = Mention_Trainer(probe, train_dataset, test_dataset, tconf)
     else:
         # NOTE for incremental exp, should fit well with the standard trainer
@@ -878,14 +878,6 @@ def main():
     header = " ".join(object_list)
     np.savetxt(predictions_file, predictions_matrix, delimiter=" ", fmt='%i', header=header, comments="")
     
-    if args.binary_probe:
-    # save plot
-        fig_file = os.path.join(tconf.ckpt_path, "predictions.pdf")
-        trainer.flush_plot(fig_file)
-
-        
-        cm_file = os.path.join(tconf.ckpt_path, "confusion_matrix.txt")
-        trainer.generate_confusion_matrix(cm_file)
         
 
 if __name__ == "__main__":

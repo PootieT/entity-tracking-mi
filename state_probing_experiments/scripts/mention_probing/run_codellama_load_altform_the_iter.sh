@@ -10,7 +10,7 @@ do
     echo --------PROBING LAYER $layer--------
     python train_probe_LLM.py \
         --model_type llama \
-        --exp_name mentioned \
+        --exp_name mention \
         --dataset_path $ROOT/../data/boxes_altAlways_default_maxop12_5k \
         --model_path /projectnb/tin-lab/sebastian/box-models/checkpoints/CodeLlama-13b-hf \
         --layer $layer \
