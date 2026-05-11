@@ -3,7 +3,8 @@
 module load miniconda
 module load cuda/11.8
 
-conda activate box-models
+conda activate <your_env>
+export HF_HOME="<your hf home>"
 
 echo "Probing layer ${1}"
 
