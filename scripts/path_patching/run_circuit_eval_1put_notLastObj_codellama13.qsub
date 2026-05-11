@@ -72,4 +72,4 @@ python eval_circuits.py \
   --counterfactual "rand_obj_rand_query_id" \
   --circuit_root_path "${ROOT}/outputs/nnsight_patch_1put/${MODEL_NAME}/logp_notLastObj/n200" \
   --load_in_8bit \
-  --mean_activation_cache_path "${ROOT}/outputs/nnsight_patch_1put/${MODEL_NAME}/logp_notLastObj/n200" \
+  --mean_activation_cache_path "${ROOT}/outputs/nnsight_patch_1put/${MODEL_NAME}/logp_notLastObj/n200"

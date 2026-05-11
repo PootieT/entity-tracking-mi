@@ -63,7 +63,6 @@ CUDA_LAUNCH_BLOCKING=1 TORCH_USE_CUDA_DSA=true python run_patching.py \
   --counterfactual "rand_obj_rand_query_id" \
   --success_filter true \
   --score_source logp \
-  --load_in_8bit \
-  --top_p 0.95
+  --load_in_8bit
 
 

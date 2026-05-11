@@ -82,11 +82,8 @@ for PATCH_GROUP in A B C D; do
     --circuit1_root_path $PUT_CIRCUIT_PATH \
     --circuit2_root_path $DESC_CIRCUIT_PATH \
     --mean_activation_cache_path "${ROOT}/outputs/nnsight_patch_1put/${MODEL_NAME}" \
-    --patch_group $PATCH_GROUP
-#    --n_groupA 20 \
-#    --n_groupB 10 \
-#    --n_groupC 30 \
-#    --n_groupD 30 \
+    --patch_group $PATCH_GROUP \
+    --n_more_heads_per_group 2
 
   # patch 1 group of put circuit into description circuit
   echo "============== patch put circuit group ${PATCH_GROUP} into description circuit =============="
@@ -104,10 +101,6 @@ for PATCH_GROUP in A B C D; do
     --circuit2_root_path $PUT_CIRCUIT_PATH \
     --mean_activation_cache_path "${ROOT}/outputs/nnsight_patch_1put/${MODEL_NAME}" \
     --patch_group $PATCH_GROUP
-#    --n_groupA 20 \
-#    --n_groupB 10 \
-#    --n_groupC 30 \
-#    --n_groupD 30 \
 
 done
 

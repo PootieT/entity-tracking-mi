@@ -62,12 +62,12 @@ python run_path_patching.py \
   --num_samples 200 \
   --ops_order "put" \
   --query_ops_order "put" \
-  --output_dir "${ROOT}/outputs/nnsight_patch_1put/${MODEL_NAME}/prob_lastObjOnly" \
+  --output_dir "${ROOT}/outputs/nnsight_patch_1put/${MODEL_NAME}/logp_lastObjOnly" \
   --counterfactual "rand_obj_rand_query_id" \
   --success_filter true \
   --sort_query_objects \
   --num_query_object 2 \
-  --score_source prob \
+  --score_source logp \
   --use_object_index "-1"
 
 

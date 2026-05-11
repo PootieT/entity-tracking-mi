@@ -61,7 +61,7 @@ def eval_circuit_main(args: argparse.Namespace):
     #circuit_components, _, _, _ = get_circuit(model, args.circuit_root_path, args.n_groupA, args.n_groupB, args.n_groupC, args.n_groupD, top_p=args.top_p)
 
     # Gabriel: After using the knee to find the circuits, n_group variables are not used
-    circuit_components, groupA, groupB, groupC, groupD = get_circuit(model, args.circuit_root_path)
+    circuit_components, groupA, groupB, groupC, groupD = get_circuit(model, args.circuit_root_path, n_more_heads_per_group=args.n_more_heads_per_group)
 
     n_groupA = len(groupA)
     n_groupB = len(groupB)
@@ -134,6 +134,7 @@ def add_args(parser: argparse.ArgumentParser):
     parser.add_argument('--circuit_root_path', help='where circuit info dir lives', type=str, default="../outputs/nnsight_patch_noop/gemma-2-2b/n200")
     parser.add_argument('--skip_ablate_non_vital_pos', help='skip ablation on non-essential tokens', action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument('--mean_activation_cache_path', help='path to cache mean activations', type=str, default="../outputs/nnsight_patch_noop/gemma-2-2b")
+    parser.add_argument("--n_more_heads_per_group", help="number of additional heads per group from knee methods", type=int, default=0)
     return parser
 
 if __name__ == "__main__":

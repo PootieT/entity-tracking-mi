@@ -72,7 +72,6 @@ CUDA_LAUNCH_BLOCKING=1 TORCH_USE_CUDA_DSA=true python run_patching.py \
   --num_query_object 2 \
   --score_source logp \
   --use_object_index ":-1" \
-  --load_in_8bit \
-  --top_p 0.95
+  --load_in_8bit
 
 

@@ -60,7 +60,8 @@ def eval_circuit_main(args: argparse.Namespace):
     dataloader, dataset, model = get_model_and_dataset(args)
     circuit_components, heads_A, heads_B, heads_C, heads_D = get_circuit(
         model, 
-        args.circuit1_root_path
+        args.circuit1_root_path,
+        n_more_heads_per_group=args.n_more_heads_per_group
     )
 
     patch_circuit_components, patch_heads_A, patch_heads_B, patch_heads_C, patch_heads_D = get_circuit_old(
@@ -158,6 +159,7 @@ def add_args(parser: argparse.ArgumentParser):
     parser.add_argument('--patch_group', help="which group to patch in from circuit2 to circuit1", type=str, default="A", choices=["A", "B", "C", "D"])
     parser.add_argument('--skip_ablate_non_vital_pos', help='skip ablation on non-essential tokens', action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument('--mean_activation_cache_path', help='path to cache mean activations', type=str, default="../outputs/nnsight_patch_noop/gemma-2-2b")
+    parser.add_argument("--n_more_heads_per_group", help="number of additional heads per group from knee methods", type=int, default=0)
     return parser
 
 if __name__ == "__main__":

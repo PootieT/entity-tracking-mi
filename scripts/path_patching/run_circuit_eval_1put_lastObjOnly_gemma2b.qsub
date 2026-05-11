@@ -12,7 +12,7 @@
 ####$ -m ea
 
 # Give job a name
-#$ -N eval_1put_gemma2b
+#$ -N eval_1put_lastObjOnly_gemma2b
 
 # Combine output and error files into a single file
 #$ -j y
@@ -49,22 +49,26 @@ export HF_HOME="<your hf home>"
 export HF_TOKEN="<your hf token>"
 ROOT=$(pwd)
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+export CUDA_LAUNCH_BLOCKING=1
+export TORCH_USE_CUDA_DSA=true
 
 MODEL="google/gemma-2-2b"
 MODEL_NAME="gemma-2-2b"
 
-cd nnsight_patching_experiments
+cd nnsight_patching_experiment
 
 python eval_circuits.py \
   --model $MODEL \
   --datafile "${ROOT}/data/boxes_altAlways_1put_moreObj_noEmpty/train-t5.jsonl" \
-  --batch_size 8 \
+  --batch_size 16 \
   --num_samples 100 \
   --ops_order "put" \
   --query_ops_order "put" \
   --counterfactual "rand_obj_rand_query_id" \
   --num_query_object 2 \
   --sort_query_objects \
-  --circuit_root_path "${ROOT}/outputs/nnsight_patch_1put/${MODEL_NAME}/logp/n200" \
-  --mean_activation_cache_path "${ROOT}/outputs/nnsight_patch_1put/${MODEL_NAME}"
+  --circuit_root_path "${ROOT}/outputs/nnsight_patch_1put/${MODEL_NAME}/logp_lastObjOnly/n200" \
+  --mean_activation_cache_path "${ROOT}/outputs/nnsight_patch_1put/${MODEL_NAME}/logp_lastObjOnly/n200" \
+  --n_more_heads_per_group 2
+
 

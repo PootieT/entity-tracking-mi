@@ -1426,12 +1426,8 @@ def get_circuit_old(
 def get_circuit(
     model: LanguageModel,
     circuit_root_path: str,
-    # n_value_fetcher: int,
-    # n_pos_trans: int,
-    # n_pos_detect: int,
-    # n_struct_read: int,
-    #top_p: float=None,
-    largest: bool=False
+    largest: bool=False,
+    n_more_heads_per_group: int=0
 ) -> Tuple[Dict, List, List, List, List]:
     """
     Computes the circuit components.
@@ -1439,13 +1435,8 @@ def get_circuit(
     Args:
         model: model under investigation.
         circuit_root_path: path to the circuit components.
-        n_value_fetcher: number of value fetcher heads.
-        n_pos_trans: number of position transformer heads.
-        n_pos_detect: number of position detector heads.
-        n_struct_read: number of structure reader heads.
-        top_p: top cumulative probability threshold to select number of heads in each group. Use this or specify number
-            of heads per group manually.
         largest: whether to get the heads with largest or the smallest values (from patching).
+        n_more_heads_per_group: number of additional heads per group to return. Use this for evaluation.
     """
 
     circuit_components = {}
@@ -1459,25 +1450,29 @@ def get_circuit(
     # struct_reader_heads = compute_topk_components(torch.tensor(np.load(f"{circuit_root_path}/pp_groupD.npy")), k=n_struct_read, largest=largest, top_p=top_p)
 
     value_fetcher_heads = compute_topk_components_knee(
-    torch.tensor(np.load(f"{circuit_root_path}/pp_groupA.npy")), 
-    largest=largest, 
-    knee_kwargs={"S": 1.0, "curve": "convex", "direction": "decreasing"}
+        torch.tensor(np.load(f"{circuit_root_path}/pp_groupA.npy")),
+        largest=largest,
+        knee_kwargs={"S": 1.0, "curve": "convex", "direction": "decreasing"},
+        increase_cutoff_n=n_more_heads_per_group
     )
         
     pos_transmitter_heads = compute_topk_components_knee(
         torch.tensor(np.load(f"{circuit_root_path}/pp_groupB.npy")), 
         largest=largest, 
-        knee_kwargs={"S": 1.0, "curve": "convex", "direction": "decreasing"}
+        knee_kwargs={"S": 1.0, "curve": "convex", "direction": "decreasing"},
+        increase_cutoff_n=n_more_heads_per_group
     )
     pos_detector_heads = compute_topk_components_knee(
         torch.tensor(np.load(f"{circuit_root_path}/pp_groupC.npy")), 
         largest=largest, 
-        knee_kwargs={"S": 1.0, "curve": "convex", "direction": "decreasing"}
+        knee_kwargs={"S": 1.0, "curve": "convex", "direction": "decreasing"},
+        increase_cutoff_n=n_more_heads_per_group
     )
     struct_reader_heads = compute_topk_components_knee(
         torch.tensor(np.load(f"{circuit_root_path}/pp_groupD.npy")), 
         largest=largest, 
-        knee_kwargs={"S": 1.0, "curve": "convex", "direction": "decreasing"}
+        knee_kwargs={"S": 1.0, "curve": "convex", "direction": "decreasing"},
+        increase_cutoff_n=n_more_heads_per_group
     )
 
 
@@ -1940,6 +1935,7 @@ def compute_topk_components_knee(
     return_values: bool = False,
     knee_kwargs: Optional[Dict[str, Any]] = None,
     return_knee: bool = False,
+    increase_cutoff_n: int = 0
 ):
     """
     Select components by:
@@ -1953,6 +1949,7 @@ def compute_topk_components_knee(
 
     knee_kwargs are forwarded to KneeLocator, e.g.:
       dict(S=1.0, curve="convex", direction="decreasing", interp_method="interp1d", online=False, polynomial_degree=7)
+    increase_cutoff controls how many additional heads you want to include.
     """
     if patching_scores.ndim != 2:
         raise ValueError(f"Expected 2D tensor (layers, heads), got shape {tuple(patching_scores.shape)}")
@@ -2009,7 +2006,9 @@ def compute_topk_components_knee(
         else:
             cutoff = int(round(float(knee_x)))
             cutoff = max(1, min(cutoff, n))
-    
+
+    cutoff += increase_cutoff_n
+
     top_indices = sorted_flat_indices[:cutoff]
     top_values = flat[top_indices]
 
