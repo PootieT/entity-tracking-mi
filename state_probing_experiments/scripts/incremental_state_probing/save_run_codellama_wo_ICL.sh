@@ -13,22 +13,23 @@
 module load miniconda
 module load cuda/11.8
 
-conda activate box-models
+conda activate <your_env>
+export HF_HOME="<your hf home>"
 
 echo "Probing layer ${1}"
 
 python train_probe_LLM.py \
     --model_type llama \
     --exp_name incremental_local_state \
-    --dataset_path data/boxes-dataset-v1/few_shot_boxes_nso_exp2_max3 \
-    --model_path //projectnb/tin-lab/qazhao/ICML26/entity-tracking-gemma/data/boxes_altAlways_default_maxop12_5k \
+    --dataset_path data/boxes_altAlways_default_maxop12_5k \
+    --model_path codellama/CodeLlama-13b-hf \
     --layer $1 \
     --epo 32 \
     --learning_rate 1e-3 \
     --binary_probe \
     --condition_on number \
-    --checkpoint_root probe_checkpoints/codellama-13b/incremental_local_state \
+    --checkpoint_root probe_experiments/probe_checkpoints/codellama-13b/incremental_local_state \
     --save_model_representation \
-    --model_representation_path representations/codellama-13b/ICL_Free/Altform/incremental_local_state \
+    --model_representation_path probe_experiments/representations/codellama-13b/ICL_Free/Altform/incremental_local_state \
     --subsample \
     
