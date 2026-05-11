@@ -2,7 +2,8 @@
 module load miniconda
 module load cuda/11.8
 
-conda activate box-models
+conda activate <your_env>
+export HF_HOME="<your hf home>"
 
 for layer in $(seq 1 41);
 do 
