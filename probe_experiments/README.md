@@ -1,36 +1,48 @@
 # entity-tracking-probing
 probing experiments to understand entity tracking task
 
-# Local / Global / Mention Probes  
+# Local / Global / Mention / Incremental State Probes  
 
 <p align="center">
   <img src="../assets/local_global_probe_acc_codellama_13b.png" alt="Put Circuit Description and Results" width="100%"/>
 </p>
 
-To cache model residual streams (last token). These are the same caches used for prior state probes.
-```commandline
-./scripts/probe_training/cache_representation_codellama13b.qsub  # using 2GPUs local
-./scripts/probe_training/cache_representation_llama3_70B.qsub  # using NDIF
-```
+To cache model residual streams (last token). Please find corresponding scripts in `./scripts/*_probing`
 
-To train Local Probes
+To cache and train Local Probes
 ```commandline
-./scripts/probe_training/load_and_train_local_probe_codellama13b.qsub  # using 1GPU local
-./scripts/probe_training/load_and_train_local_probe_llama3_70B.qsub  # using NDIF
+./scripts/local_state_probing/save_codellama.sh  # cache representation using 1GPU local
+./scripts/local_state_probing/save_70b.sh  # cache representation using NDIF
+./scripts/local_state_probing/train_codellama.sh  # train codellama local state probes
+./scripts/local_state_probing/save_70b.sh  # train llama 3.1 70B local state probes
+
 ```
 
 To train Global probes
 
 ```commandline
-./scripts/probe_training/load_and_train_global_probe_codellama13b.qsub  # using 1GPU local
-./scripts/probe_training/load_and_train_global_probe_llama3_70B.qsub  # using NDIF
+./scripts/global_state_probing/save_codellama.sh  # cache representation using 1GPU local
+./scripts/global_state_probing/save_70b.sh  # cache representation using NDIF
+./scripts/global_state_probing/train_codellama.sh  # train codellama probes
+./scripts/global_state_probing/save_70b.sh  # train llama 3.1 70B probes
 ```
 
 To train mention probes
 
 ```commandline
-./scripts/probe_training/load_and_train_mention_probe_codellama13b.qsub  # using 1GPU local
-./scripts/probe_training/load_and_train_mention_probe_llama3_70B.qsub  # using NDIF
+./scripts/mention_probing/save_codellama.sh  # cache representation using 1GPU local
+./scripts/mention_probing/save_70b.sh  # cache representation using NDIF
+./scripts/mention_probing/train_codellama.sh  # train codellama probes
+./scripts/mention_probing/save_70b.sh  # train llama 3.1 70B probes
+```
+
+To train incremental state probes
+
+```commandline
+./scripts/incremental_state_probing/save_codellama.sh  # cache representation using 1GPU local
+./scripts/incremental_state_probing/save_70b.sh  # cache representation using NDIF
+./scripts/incremental_state_probing/train_codellama.sh  # train codellama probes
+./scripts/incremental_state_probing/save_70b.sh  # train llama 3.1 70B probes
 ```
 
 # Prior State Probes

@@ -14,10 +14,13 @@ import torch
 import json
 from torch.utils.data import Dataset, DataLoader
 import datasets
-from .utils import get_objects, get_box_ids, is_object, is_box_id, get_token_pos_given_span_types #format_sentence
+from .probing_utils import get_objects, get_box_ids, is_object, is_box_id, get_token_pos_given_span_types #format_sentence
 
 import sys
-sys.path.append("../..")
+sys.path.append(".")
+# check all pathes
+print("Current working directory:", os.getcwd())
+print("Current paths:", sys.path)
 from utils import format_sentence, PROMPT, PROMPT_ALTFORM, PROMPT_ALLBOX_ALTFORM, INSTRUCTION
 from .state_evals import generate_state_matrix, detect_local_removals, detect_removals
 
@@ -411,8 +414,8 @@ class BinaryProbeDataLoader(Dataset):
             self.examples = self.examples[0:0]
             self.num_ops = self.num_ops[0:0]
             self.mentioned_objects = self.num_ops[0:0]
-
-        assert len(self.activations) ==  len(self.examples)
+        
+        assert len(self.activations) ==  len(self.examples), f"find activation shape: {len(self.activations)}, example shape {len(self.examples)}"
         
         self.n = len(self.activations)
     
@@ -1456,7 +1459,7 @@ class ObjectLocationProbeDataLoader(Dataset):
                 counts[0] += 1
 
             num_ops.append(len(s_parts) - 2)
-            pdb.set_trace()
+            # pdb.set_trace()
             if max_examples is not None and len(y) == max_examples:
                 break
 
@@ -1598,9 +1601,12 @@ class GPTDataloaderForIncrementalLocalState(Dataset):
         # 2. parse them according to the operations 
         # 3. remove the inital state -- at that time BOX_ID position does not see any contents yet.
         # 4. We shuold have something like [[box ids in op1], [box ids in op2], ...], outer list length = num_ops, and a list of state matrix like [[content of boxes in op1], [content of boxes in op2], ...], outer list length = num_ops, inner list length = length of box ids in that operation
+        
+        # 5 remove 3. now we can have box_id before contents
         seq = [st.strip() for st in clean_prefix.split('.') if st]
         ori_state = seq[0]
-        op_seq = seq[1:] # Might be a problem -- no query now
+        # pdb.set_trace(header="111")
+        op_seq = seq[1:] 
         box_ids_in_ops = []
         for op in op_seq:
             box_ids = re.findall(r'Box (\d+)', op)
@@ -1698,7 +1704,7 @@ class IncrementalLocalStateProbeDataLoader(Dataset):
         for i in range(len(dataset)):
             # pdb.set_trace(header="debug expand examples")
             data = dataset[i]
-            act = self.activations[i] # shape: [N_box_ids, hidden_dim]
+            act = self.activations[i].squeeze(0) # to shape: [N_box_ids, hidden_dim]
             print(i, act.shape, len(data['box_id_positions_flattened']), data['box_local_states_flattened'].shape)
             assert act.shape[0] == len(data['box_id_positions_flattened']) == data['box_local_states_flattened'].shape[0], f"Activation shape {act.shape[0]} does not match number of box ids {len(data['box_id_positions_flattened'])} or number of box states {data['box_local_states_flattened'].shape[0]}!"
             num_boxes_to_unroll = len(data['box_id_positions_flattened'])

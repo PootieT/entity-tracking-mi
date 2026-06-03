@@ -2,7 +2,7 @@ import os
 # set up logging
 import logging
 from functools import partial
-
+import pdb
 from wandb.old.summary import h5py
 # ignore warnings
 import warnings
@@ -38,11 +38,11 @@ from src.dataset import ProbeDataLoader, LMDataloader, GPTDataloaderForInference
 from src.model import T5ForProbing, GPTForProbing, LlamaForProbing
 from src.probe_trainer import Trainer, TrainerConfig, Mention_Trainer
 from src.probe_model import BatteryProbeClassification, ObjectLocationProbeClassification, BatteryProbeClassificationTwoLayer
-from src.utils import get_token_pos_given_span_types, get_object_mapping, get_quantization_config
+from src.probing_utils import get_token_pos_given_span_types, get_object_mapping, get_quantization_config
 
 
 import sys
-sys.path.append("..")
+sys.path.append(".")
 from utils import fix_random_seed, free_gpu_cache, get_basis_directions, pad_batch_collate_fn, setup_nnsight
 
 
@@ -162,6 +162,9 @@ def write_caching_history(ckpt_folder_path: str, batch_idx, batch_size: int, act
         os.makedirs(batch_ckpt_folder_path, exist_ok=True)
     with open(os.path.join(batch_ckpt_folder_path, "info.txt"), "w") as f:
         f.write(f"Batch Index: {batch_idx}\nBatch Size: {batch_size}\n")
+    # pdb.set_trace(header="saving ndif remote activations")
+    # print estimated size of act_all_container_elems to be saved
+    
     with open(os.path.join(batch_ckpt_folder_path, "act_all_container_elems.p"), "wb") as f:
         pickle.dump(act_all_container_elems, f)
     
@@ -219,16 +222,14 @@ def get_activations_from_data(act_all_container, act_container, args, end_idx, i
         
         ids = data['prefix_ids'].to(inference_device, dtype=torch.long)
         mask = data['prefix_attn_masks'].to(inference_device, dtype=torch.long)
-        box_id_positions = data['box_id_positions'] if 'box_id_positions' in data else None # used to identify whether it's incremental state probe or not. In this case we're not caching a single token position. 
+        # pdb.set_trace(header="checking dataloader output")
+        box_id_positions = data['box_id_positions_flattened'] if 'box_id_positions_flattened' in data else None # used to identify whether it's incremental state probe or not. In this case we're not caching a single token position. 
         is_incremental_state_data = box_id_positions is not None
         
         
-        # padding_side = data.get('padding_side', 'left') 
-        # start_of_effective_token = data.get('start_of_effective_token', None) # solve indexing problem
-        # Nevermind, solved by adding padding tokens to the NON_OBJ_WORDS in utils.py
-        # pdb.set_trace(header="check dataloader output")
+        
         if end_idx is not None:
-            # we're using left padding so default end_idx will not be affected
+        
             ids = ids[0][:end_idx].unsqueeze(0)
             mask = mask[0][:end_idx].unsqueeze(0)
         # pdb.set_trace(header="after slicing ids and mask")
@@ -245,11 +246,8 @@ def get_activations_from_data(act_all_container, act_container, args, end_idx, i
             batch_token_pos = [-1] *len(ids)
             
         if is_incremental_state_data:
-            # the batch_token_pos is the same as box_id_positions
-            batch_token_pos = box_id_positions # now it's a list of list of single token tensors, now flatten to a 1-d list of ints
-            # to a 1-d int
-            batch_token_pos = [[btp.item() for btp in batch_token_pos]]
-
+            batch_token_pos = [box_id_positions]
+            batch_token_pos = [[int(btp) for btp in _] for _ in batch_token_pos]
         if args.save_model_representation:
             # pdb.set_trace(header="entering ndif remote")
             if any([isinstance(model, c) for c in [LlamaForProbing, GPTForProbing, T5ForProbing]]):
@@ -265,11 +263,11 @@ def get_activations_from_data(act_all_container, act_container, args, end_idx, i
                 seq_len = ids.shape[1]
                 layer_idx = args.layer
                 condition_on = args.condition_on
+                # pdb.set_trace(header="entering ndif remote")
                 with model.trace({
                     "input_ids": ids,
                     "attention_mask": mask
                 }, remote = (args.ndif_remote or is_incremental_state_data)) as tr:
-                    # TODO: saving all token positions might be too large, try with smaller batch size for now; if still too large, try to scan/copy by chunks; if that still fails, need to extract pos_token_positions feature inside the tracing context
                     stacked_hs = torch.zeros((num_layers, num_sample, seq_len, hidden_size))# hardcode [num_layers + 1, batch_size, hidden_size]
                     stacked_hs[0] = model.model.layers[0].input.detach().cpu()  # input of the first layer, B, SeqL, D
                     act_all_container_elems = [].save()
@@ -284,8 +282,8 @@ def get_activations_from_data(act_all_container, act_container, args, end_idx, i
                         # might be a little bit inefficient but whatever...
                         # shape of a: should be num+samples, seq_len, hidden_dim
                             # pdb.set_trace(header="checking batch size > 1 caching ndif remote")
-                        act_all_container_elem = [a[i, batch_token_pos[i], :].detach().cpu().unsqueeze(0) for a in act]
-                        act_container_elem = act[layer_idx - 1][i, batch_token_pos[i], :].detach().cpu().unsqueeze(0)
+                        act_all_container_elem = [a[i, batch_token_pos[i], :].clone().detach().cpu().unsqueeze(0) for a in act]
+                        act_container_elem = act[layer_idx - 1][i, batch_token_pos[i], :].clone().detach().cpu().unsqueeze(0)
                         act_all_container_elems.append(act_all_container_elem)
                         act_container_elems.append(act_container_elem)
                         if "-" in condition_on or "_" in condition_on:
@@ -294,42 +292,27 @@ def get_activations_from_data(act_all_container, act_container, args, end_idx, i
                                 act_all_container_elems.append([])
                                 act_container_elems.append([])
                 # save to checkpoint folder
-                write_caching_history(ckpt_folder_path, batch_idx, len(ids), act_all_container_elems)
+                # pdb.set_trace(header="saving ndif remote caching history")
+                write_caching_history(ckpt_folder_path, batch_idx, len(ids), act_all_container_elems) # for inc, its [[1, n_tks, hdm] * n_layers]
                         
 
             else: # hf models
                 act = model(input_ids=ids, attention_mask=mask, output_hidden_states=True).hidden_states
-            # if batch size = 1, use old logic
-            
-            if len(ids) == 1: 
+
+            for i in range(len(ids)):
+                
                 if not args.ndif_remote:
-                    act_all_container.append([a[0, batch_token_pos, :].detach().cpu() for a in act])
-                    act_container.append(act[args.layer - 1][0, batch_token_pos, :].detach().cpu())
+                    act_all_container.append([a[i, batch_token_pos[i], :].detach().cpu().unsqueeze(0) for a in act])
+                    act_container.append(act[args.layer - 1][i, batch_token_pos[i], :].detach().cpu().unsqueeze(0))
                 else:
                     act_all_container.append(act_all_container_elems[i])
                     act_container.append(act_container_elems[i])
+                # estimate act_all_container size
                 if "-" in args.condition_on or "_" in args.condition_on:
-                    # add 6 empty caches so the total number of datapoint matches with original data without subseting
+                # add 6 empty caches so the total number of datapoint matches with original data without subseting
                     for _ in range(6):
                         act_all_container.append([])
                         act_container.append([])
-            else:
-                for i in range(len(ids)):
-                    # might be a little bit inefficient but whatever...
-                    # shape of a: should be num+samples, seq_len, hidden_dim
-                    # pdb.set_trace(header="checking batch size > 1 caching")
-                    if not args.ndif_remote:
-                        act_all_container.append([a[i, batch_token_pos[i], :].detach().cpu().unsqueeze(0) for a in act])
-                        act_container.append(act[args.layer - 1][i, batch_token_pos[i], :].detach().cpu().unsqueeze(0))
-                    else:
-                        act_all_container.append(act_all_container_elems[i])
-                        act_container.append(act_container_elems[i])
-                    # estimate act_all_container size
-                    if "-" in args.condition_on or "_" in args.condition_on:
-                    # add 6 empty caches so the total number of datapoint matches with original data without subseting
-                        for _ in range(6):
-                            act_all_container.append([])
-                            act_container.append([])
         else:
             # last hidden state
             # NDIF not implemented
@@ -488,7 +471,7 @@ def main():
     parser.add_argument(
             "--object_vocabulary_file",
             type=str,
-            default="data/objects_with_bnc_frequency.csv",
+            default="data/objects/objects_with_bnc_frequency.csv",
             help='Path to a .csv file with a string field "object_names".')
     parser.add_argument('--layer',
                         required=True,
@@ -637,8 +620,8 @@ def main():
     if args.exclude_empty and args.condition_on not in ["contains", "the"]:
         raise ValueError("--exclude_empty can only be used with --condition_on 'contains' or 'the'")
     
-    if args.condition_on in ["contains", "the"] and not args.exclude_empty:
-        raise ValueError("--condition_on 'contains' or 'the' can only be used with --exclude_empty")
+    # if args.condition_on in ["contains", "the"] and not args.exclude_empty:
+    #     raise ValueError("--condition_on 'contains' or 'the' can only be used with --exclude_empty")
 
     if args.save_model_representation and args.model_representation_path is None:
         raise ValueError("--save_model_representation requires --model_representation_path to be set")
@@ -724,6 +707,7 @@ def main():
         test_df = test_df[["sentence_masked", "masked_content"]]
 
     # Load object names
+    print(args.object_vocabulary_file)
     object_map, object_list = get_object_mapping(args.object_vocabulary_file)
     tokenizer = AutoTokenizer.from_pretrained(args.model_path)
 
@@ -845,22 +829,22 @@ def main():
         model.probe_layer = args.layer
         inference_device = model.device if not args.ndif_remote else torch.device("cuda" if torch.cuda.is_available() else "cpu")
         model.eval()
-
+        # pdb.set_trace(header="111")
         # initialze LM test dataset
         if args.model_type == "t5":
             train_dataset = LMDataloader(train_df, tokenizer, _MAX_SOURCE_TEXT_LENGTH[args.model_type], _MAX_TARGET_TEXT_LENGTH, "sentence_masked", "masked_content", include_empty=not args.exclude_empty, min_prev_objects=args.condition_on_obj)
             test_dataset = LMDataloader(test_df, tokenizer, _MAX_SOURCE_TEXT_LENGTH[args.model_type], _MAX_TARGET_TEXT_LENGTH, "sentence_masked", "masked_content", include_empty=not args.exclude_empty, min_prev_objects=args.condition_on_obj)
         else: #if args.model_type in ["gpt", "llama"]:
-            if args.incremental_state_probe:
-                train_dataset = GPTDataloaderForIncrementalLocalState(train_df, tokenizer, max_length=_MAX_SOURCE_TEXT_LENGTH[args.model_type], include_empty=not args.exclude_empty, condition_on=args.condition_on, min_prev_objects=args.condition_on_obj, include_prompt=args.include_prompt, args=args)
-                test_dataset = GPTDataloaderForIncrementalLocalState(test_df, tokenizer, max_length=_MAX_SOURCE_TEXT_LENGTH[args.model_type], include_empty=not args.exclude_empty, condition_on=args.condition_on, min_prev_objects=args.condition_on_obj, include_prompt=args.include_prompt, args=args)
+            if args.incremental_local_state:
+                train_dataset = GPTDataloaderForIncrementalLocalState(train_df, tokenizer, max_length=_MAX_SOURCE_TEXT_LENGTH[args.model_type], include_empty=not args.exclude_empty, condition_on=args.condition_on, min_prev_objects=args.condition_on_obj, include_prompt=args.include_prompt, object_map=object_map)
+                test_dataset = GPTDataloaderForIncrementalLocalState(test_df, tokenizer, max_length=_MAX_SOURCE_TEXT_LENGTH[args.model_type], include_empty=not args.exclude_empty, condition_on=args.condition_on, min_prev_objects=args.condition_on_obj, include_prompt=args.include_prompt, object_map=object_map)
             else:
                 train_dataset = GPTDataloaderForInference(train_df, tokenizer, max_length=_MAX_SOURCE_TEXT_LENGTH[args.model_type], include_empty=not args.exclude_empty, condition_on=args.condition_on, min_prev_objects=args.condition_on_obj, include_prompt=args.include_prompt, args=args)
                 test_dataset = GPTDataloaderForInference(test_df, tokenizer, max_length=_MAX_SOURCE_TEXT_LENGTH[args.model_type], include_empty=not args.exclude_empty, condition_on=args.condition_on, min_prev_objects=args.condition_on_obj, include_prompt=args.include_prompt, args=args)
         collate_fn = None
         if args.caching_batch_size > 1:
             # get custom collate fn for batching
-            collate_fn = train_dataset.get_collate_fn()
+            collate_fn = train_dataset.get_collate_fn() if hasattr(train_dataset, "get_collate_fn") else None
 
         # truncate dataset if needed
         if args.max_train_data is not None:
@@ -923,7 +907,7 @@ def main():
     if args.object_location:
         probing_dataset_train = ObjectLocationProbeDataLoader(act_container_train, dataset_path_train, max_data=args.max_train_data)
         probing_dataset_test = ObjectLocationProbeDataLoader(act_container_test, dataset_path_test, max_data=args.max_test_data)
-    elif args.incremental_state_probe:
+    elif args.incremental_local_state:
         tokenizer = AutoTokenizer.from_pretrained(args.model_path)
         train_dataset = GPTDataloaderForIncrementalLocalState(train_df, tokenizer, max_length=_MAX_SOURCE_TEXT_LENGTH[args.model_type], include_empty=not args.exclude_empty, condition_on=args.condition_on, min_prev_objects=args.condition_on_obj, include_prompt=args.include_prompt, object_map=object_map)
         test_dataset = GPTDataloaderForIncrementalLocalState(test_df, tokenizer, max_length=_MAX_SOURCE_TEXT_LENGTH[args.model_type], include_empty=not args.exclude_empty, condition_on=args.condition_on, min_prev_objects=args.condition_on_obj, include_prompt=args.include_prompt, object_map=object_map)

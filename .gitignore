@@ -174,3 +174,9 @@ cython_debug/
 .pypirc
 .vscode
 .gitignore
+
+
+representations/
+probe_check_checkpoints/
+logs/
+data/

@@ -50,6 +50,7 @@ class Trainer:
         self.config = config
         self.scheduler = None
         self.optimizer = None
+        self.num_class = self.model.probe_class
 
         # take over whatever gpus are on the system
         self.device = 'cpu'
@@ -193,6 +194,13 @@ class Trainer:
         hits_nontriv_epoch = np.zeros(MAX_NUM_OPERATIONS, dtype=float)  # np.array of shape [MAX_NUM_OPERATIONS], for numops  of  0 to MAX_NUM_OPERATIONS
         hits_triv_epoch = np.zeros(MAX_NUM_OPERATIONS, dtype=float)  # np.array of shape [MAX_NUM_OPERATIONS], for numops  of  0 to MAX_NUM_OPERATIONS
 
+        recalls_epoch = np.zeros(MAX_NUM_OPERATIONS, dtype=float) # TP / (TP + FN)
+        precision_epoch = np.zeros(MAX_NUM_OPERATIONS, dtype=float) # TP / (TP + FP)
+        total_recalls_epoch = np.zeros(MAX_NUM_OPERATIONS, dtype=float) # TP + FN 
+        total_precision_epoch = np.zeros(MAX_NUM_OPERATIONS, dtype=float) # TP + FP
+             
+
+
         if hasattr(data, 'mask_fields'):
             hits_masks_epoch = {k:np.zeros(MAX_NUM_OPERATIONS,dtype=float) for k in data.mask_fields}
             hits_masks_epoch["confusion_matrix"] = np.zeros((num_classes, num_classes), dtype=float)
@@ -206,6 +214,10 @@ class Trainer:
             totals_epoch_masks = {k: np.zeros(MAX_NUM_OPERATIONS, dtype=float) for k in data.mask_fields}
 
         predictions = []
+        gt_ls = []
+        mentioned_ls = []
+        total_mentioned = 0
+        results = [] # save predictions for further analysis, if needed
         pbar = tqdm(enumerate(loader), total=len(loader), disable=not prt, leave=True) if is_train else enumerate(loader)
         for it, (x, y, age, mentioned) in pbar:
             x = x.to(self.device)  # [B, f]
@@ -244,7 +256,10 @@ class Trainer:
                         hits_trivial = (y_hat == y) * (1 - mentioned)
                         hits_nontriv_epoch += np.array([torch.sum(hits_nontrivial * (age == i)).item() for i in range(MAX_NUM_OPERATIONS)]).astype(float)
                         hits_triv_epoch += np.array([torch.sum(hits_trivial * (age == i)).item() for i in range(MAX_NUM_OPERATIONS)]).astype(float)
-
+                        recalls_epoch += np.array([torch.sum((y_hat == 1) * (y == 1) * (age == i)).item() for i in range(MAX_NUM_OPERATIONS)]).astype(float)
+                        precision_epoch += np.array([torch.sum((y_hat == 1) * (y == 1) * (age == i)).item() for i in range(MAX_NUM_OPERATIONS)]).astype(float)
+                        total_recalls_epoch += np.array([torch.sum((y == 1) * (age == i)).item() for i in range(MAX_NUM_OPERATIONS)]).astype(float)
+                        total_precision_epoch += np.array([torch.sum((y_hat == 1) * (age == i)).item() for i in range(MAX_NUM_OPERATIONS)]).astype(float)
                 predictions.append(y_hat.cpu().numpy())
 
             if is_train:
@@ -255,6 +270,9 @@ class Trainer:
                 self.optimizer.step()
                 mean_loss = float(np.mean(losses))
                 mean_acc = np.sum(hits_epoch).item() / np.sum(totals_epoch).item()
+                mean_recall = np.sum(recalls_epoch).item() / np.sum(total_recalls_epoch).item() if np.sum(total_recalls_epoch).item() > 0 else 0.0
+                mean_precision = np.sum(precision_epoch).item() / np.sum(total_precision_epoch).item() if np.sum(total_precision_epoch).item() > 0 else 0.0
+                    
                 lr = self.optimizer.param_groups[0]['lr']
 
                 if isinstance(mentioned, dict):
@@ -297,10 +315,16 @@ class Trainer:
                     logger.info(f"confusion matrix:\n{hits_masks_epoch['confusion_matrix']}")
                     logger.info(f"test loss {test_loss:.5f}; acc {test_acc * 100:.2f}%; {report_str}")
             else:
+                test_recall = np.sum(recalls_epoch).item() / np.sum(total_recalls_epoch).item() if np.sum(total_recalls_epoch).item() > 0 else 0.0
+                test_precision = np.sum(precision_epoch).item() / np.sum(total_precision_epoch).item() if np.sum(total_precision_epoch).item() > 0 else 0.0
                 test_acc_nontriv = np.sum(hits_nontriv_epoch).item() / (np.sum(totals_epoch_nontriv).item() + 1e-20)
                 test_acc_triv = np.sum(hits_triv_epoch).item() / (np.sum(totals_epoch_triv).item() + 1e-20)
                 if prt:
-                    logger.info(f"test loss {test_loss:.5f}; acc {test_acc * 100:.2f}%; non-triv acc {test_acc_nontriv * 100:.2f}%;  test triv acc {test_acc_triv * 100:.2f}%")
+                    # provide recall&precision if binary task
+                    msg = f"test loss {test_loss:.5f}; acc {test_acc * 100:.2f}%; non-triv acc {test_acc_nontriv * 100:.2f}%;  test triv acc {test_acc_triv * 100:.2f}%"
+                    if self.num_class == 2:
+                        msg += f"; test recall {test_recall*100:.2f}%; test precision {test_precision*100:.2f}%"
+                    logger.info(msg)
             self.test_loss_cont.append(test_loss)
             self.test_acc_cont.append(test_acc)
             self.test_strat_acc_cont.append((hits_epoch / totals_epoch).tolist())
