@@ -12,7 +12,7 @@
 module load miniconda
 module load cuda/11.8
 
-conda activate box-models
+conda activate <your_env>
 
 export WANDB_PROJECT=entity-tracking-probing
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
