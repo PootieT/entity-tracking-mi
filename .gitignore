@@ -177,6 +177,6 @@ cython_debug/
 
 
 representations/
-probe_check_checkpoints/
+probe_checkpoints/
 logs/
 data/
