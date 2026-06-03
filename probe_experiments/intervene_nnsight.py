@@ -19,7 +19,7 @@ from tqdm import tqdm
 import time
 
 from src.dataset import PROMPT, PROMPT_ALLBOX_ALTFORM, PROMPT_ALTFORM, INSTRUCTION
-from src.utils import format_sentence, get_quantization_config, get_objects, get_box_ids, fix_random_seed, find_all
+from src.probing_utils import format_sentence, get_quantization_config, get_objects, get_box_ids, fix_random_seed, find_all
 
 
 model_list = [

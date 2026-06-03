@@ -14,7 +14,7 @@ import transformers
 from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 
 from src.dataset import *
-from src.utils import format_sentence, get_quantization_config
+from src.probing_utils import format_sentence, get_quantization_config
 
 import nnsight
 import anyio
