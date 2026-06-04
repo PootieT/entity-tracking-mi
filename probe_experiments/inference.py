@@ -14,16 +14,13 @@ import transformers
 from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 
 from src.dataset import *
-from src.utils import format_sentence, get_quantization_config
+from src.probing_utils import format_sentence, get_quantization_config
 
 import nnsight
 import anyio
 
 from nnsight import LanguageModel
 import sys
-sys.path.append('./zaq_exps')  
-from zqa_exps.configs import setup_zqa_configs
-setup_zqa_configs()
 
 MAX_NEW_TOKENS = 50
 MAX_REMOTE_ATTEMPTS = 10

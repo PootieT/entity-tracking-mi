@@ -24,7 +24,7 @@ index=$(($SGE_TASK_ID-1))
 PRIOR_STATES=(-8 -7 -6 -5 -4 -3 -2)
 PRIOR_STATE=${PRIOR_STATES[$index]}
 
-for LAYER in {1..126}
+for LAYER in {1..80}
 do
   echo "Prior state ${PRIOR_STATE}, Probing layer ${LAYER}"
   python probe_experiments/train_probe_load_NDIF.py \

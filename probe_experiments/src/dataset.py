@@ -14,12 +14,15 @@ import torch
 import json
 from torch.utils.data import Dataset, DataLoader
 import datasets
-from .utils import get_objects, get_box_ids, is_object, is_box_id, get_token_pos_given_span_types #format_sentence
+from .probing_utils import get_objects, get_box_ids, is_object, is_box_id, get_token_pos_given_span_types #format_sentence
 
 import sys
-sys.path.append("../..")
+sys.path.append(".")
+# check all pathes
+print("Current working directory:", os.getcwd())
+print("Current paths:", sys.path)
 from utils import format_sentence, PROMPT, PROMPT_ALTFORM, PROMPT_ALLBOX_ALTFORM, INSTRUCTION
-
+from .state_evals import generate_state_matrix, detect_local_removals, detect_removals
 
 _GPT_MAX_LENGTH = 512
 NUM_BOXES = 7
@@ -411,8 +414,8 @@ class BinaryProbeDataLoader(Dataset):
             self.examples = self.examples[0:0]
             self.num_ops = self.num_ops[0:0]
             self.mentioned_objects = self.num_ops[0:0]
-
-        assert len(self.activations) ==  len(self.examples)
+        
+        assert len(self.activations) ==  len(self.examples), f"find activation shape: {len(self.activations)}, example shape {len(self.examples)}"
         
         self.n = len(self.activations)
     
@@ -1456,8 +1459,378 @@ class ObjectLocationProbeDataLoader(Dataset):
                 counts[0] += 1
 
             num_ops.append(len(s_parts) - 2)
-            pdb.set_trace()
+            # pdb.set_trace()
             if max_examples is not None and len(y) == max_examples:
                 break
 
         return y, num_ops, counts
+
+
+
+class GPTDataloaderForIncrementalLocalState(Dataset):
+    """Loads LM dataset for inference of Incremental Local States."""
+
+    def __init__(self, dataframe, tokenizer, max_length=_GPT_MAX_LENGTH, include_empty=True, condition_on="number", min_prev_objects=-1, include_prompt=False, object_map = {}):
+
+        self.tokenizer = tokenizer
+        self.include_empty = include_empty
+        self.min_prev_objects = min_prev_objects
+        self.condition_on = condition_on
+        self.n_objects = len(object_map)
+        self.oti = object_map
+        def get_numops_global(s):
+            s = "Description" +  s.split("Description")[-1]
+            seq = [st.strip() for st in s.split('.') if st]
+            if len(seq) <= 1:
+                return 0
+            else:
+                return len(seq) - 1
+        if self.include_empty:
+            self.data = dataframe
+        else:
+            # filter all examples with empty boxes if include_empty is set to False
+            f = dataframe["masked_content"].str.contains("nothing") | dataframe["masked_content"].str.contains("is empty")
+            self.data = dataframe[-f]
+        
+            if self.min_prev_objects > 0:
+                f = dataframe["masked_content"].str.split(" and ").apply(lambda x: len(x) > self.min_prev_objects)
+                self.data = self.data[f]
+
+            self.data = self.data.reset_index()
+
+        # for the original t5 dataset, prefix ends with box number, while for the few-shot dataset, it ends with "contains"
+        if any(self.data["prefix"].str.endswith("contains")):
+            # a patchy solution to remove the contains from the prefix
+            self.data["prefix"] = self.data["prefix"].apply(lambda x: x[:-9] if x.endswith("contains") else x)
+            self.data['masked_content'] = self.data['masked_content'].apply(lambda x: x.replace("contains ", "").replace("<extra_id_0> ", ""))
+        
+        
+        self.prefix_text = self.data["prefix"] 
+        self.target_text = self.data["sentence"]
+        self.max_length = max_length
+
+        if self.min_prev_objects > 0:
+            self.prefix_text = self.data.apply(lambda x: x["prefix"] + " " + " and ".join(x["masked_content"].split(" and ")[0:self.min_prev_objects]) + " and the", axis=1)
+
+        elif self.condition_on == "contains":
+            # add " contains" to prefix
+            self.prefix_text = self.data["prefix"].apply(lambda x: x + " contains")
+        elif self.condition_on == "the":
+            # add " contains the" to prefix
+            self.prefix_text = self.data["prefix"].apply(lambda x: x + " contains the")
+            
+        # Already ends with the box id when using this dataloader. Need to remove the query completely
+        
+
+        if include_prompt:
+            # self.prefix_text = self.prefix_text.apply(lambda x: PROMPT + ". ".join(x.split(". ")[:-1]) + ".\nStatement: " + x.split(". ")[-1])
+            self.prefix_text = self.prefix_text.apply(lambda x: PROMPT + ". ".join(x.split(". ")[:-1]) + ".")
+            self.target_text = self.target_text.apply(lambda x: PROMPT + ". ".join(x.split(". ")[:-1]) + ".\nStatement: " + x.split(". ")[-1])
+            self.prefix_text = self.prefix_text.iloc[::NUM_BOXES].reset_index(drop=True)
+            self.target_text = self.target_text.iloc[::NUM_BOXES].reset_index(drop=True)
+            mask = self.prefix_text.apply(get_numops_global) > 0
+            self.prefix_text = self.prefix_text[mask].reset_index(drop=True)
+            self.target_text = self.target_text[mask].reset_index(drop=True)
+            # also drop all the zero-ops samples with no operations
+            
+
+            print(self.prefix_text[0])
+            print(self.prefix_text[1])
+            print("---------")
+            print(self.target_text[1])
+        else:
+            self.prefix_text = self.prefix_text.apply(lambda x:  ". ".join(x.split(". ")[:-1]) + ".")
+            self.target_text = self.target_text.apply(lambda x:  ". ".join(x.split(". ")[:-1]) + ". " + x.split(". ")[-1])
+            self.prefix_text = self.prefix_text.iloc[::NUM_BOXES].reset_index(drop=True)
+            self.target_text = self.target_text.iloc[::NUM_BOXES].reset_index(drop=True)
+            mask = self.prefix_text.apply(get_numops_global) > 0
+            self.prefix_text = self.prefix_text[mask].reset_index(drop=True)
+            self.target_text = self.target_text[mask].reset_index(drop=True)
+            
+        
+            
+
+            
+
+    def __len__(self):
+        return len(self.target_text)
+
+    def __getitem__(self, index):
+        self.tokenizer.padding_side = "right"
+        target_text = str(self.target_text[index])
+
+        targ = self.tokenizer.batch_encode_plus(
+            [target_text], max_length=self.max_length, return_tensors='pt')
+
+        prefix_text = str(self.prefix_text[index])
+
+        pref = self.tokenizer.batch_encode_plus(
+            [prefix_text], max_length=self.max_length, return_tensors='pt')
+
+        target_ids = targ['input_ids'].squeeze()
+        prefix_ids = pref['input_ids'].squeeze()
+        prefix_attn_masks = pref['attention_mask'].squeeze()
+        # only keep the last example. Remove the few shot examples.
+        if "Description" in prefix_text:
+            clean_prefix = "Description" +  prefix_text.split("Description")[-1] # This is used to generate the state matrix, so it should not affect the tokenization or saving activations with the LMs.
+        else:
+            clean_prefix = prefix_text
+            
+        start_of_task = None # Find the start of the task description in the tokenized sequence
+        
+        
+        # Generate Mentioned Vectors from clean_prefix
+        mentioned_objects = torch.zeros(self.n_objects) #vector with mentioned objects
+        # pdb.set_trace()
+        s_parts = clean_prefix.strip(".").split(".")
+        o_names = re.findall(r'\bthe ([^\s,.\n]+)', " ".join(s_parts[:-1]) + " ") # this is a regex to find all object names in the sentence
+        for o in o_names: 
+            oidx = self.oti[o]
+            mentioned_objects[oidx] = 1
+
+
+        state_matrix, _, _ = generate_state_matrix(clean_prefix, object_map=self.oti, contains_query=False)
+        state_matrix = torch.tensor(state_matrix, dtype=torch.float32)
+        if "Description" in prefix_text:
+            
+            start_of_task = [i for i, tkn in enumerate(self.tokenizer.convert_ids_to_tokens(prefix_ids)) if 'Description' in tkn][-1]
+        else:
+            start_of_task = 0
+        
+        # 1. Find all the box ids after the start_of_task
+        # 2. parse them according to the operations 
+        # 3. remove the inital state -- at that time BOX_ID position does not see any contents yet.
+        # 4. We shuold have something like [[box ids in op1], [box ids in op2], ...], outer list length = num_ops, and a list of state matrix like [[content of boxes in op1], [content of boxes in op2], ...], outer list length = num_ops, inner list length = length of box ids in that operation
+        
+        # 5 remove 3. now we can have box_id before contents
+        seq = [st.strip() for st in clean_prefix.split('.') if st]
+        ori_state = seq[0]
+        # pdb.set_trace(header="111")
+        op_seq = seq[1:] 
+        box_ids_in_ops = []
+        for op in op_seq:
+            box_ids = re.findall(r'Box (\d+)', op)
+            if len(box_ids) > 0:
+                box_ids_in_ops.append([int(bid) for bid in box_ids])
+            else:
+                box_ids_in_ops.append([])
+        box_states_in_ops = []
+        # if there's no operation at all, we should not remove the initial state
+        for t in range(1, state_matrix.shape[0]): # would accidentally remove the final state when there's no operation at all
+            box_states_in_ops.append([state_matrix[t, bid, :] for bid in box_ids_in_ops[t-1]])
+        
+        box_positions_in_ops = []
+        flattened_box_ids = []
+
+        for bids in box_ids_in_ops:
+            flattened_box_ids.extend(bids)
+
+        box_id_positions = []
+        num_id_encountered = 0
+        for i, tkn in enumerate(self.tokenizer.convert_ids_to_tokens(prefix_ids)):
+            # just find all the box ids (integers)
+            # if is interger and i > start_of_task, need to check token prefix
+            clean_token = tkn.replace("Ġ", "").replace("▁", "") # for different tokenizers
+            if re.match(r'^\d+$', clean_token) and i > start_of_task:
+                num_id_encountered += 1
+                if num_id_encountered > NUM_BOXES: # skip the first 7 box ids, which should correspond to the initial state description
+                    box_id_positions.append(i)
+                    
+        
+        assert len(box_id_positions) == len(flattened_box_ids), f"Number of box ids {len(flattened_box_ids)} does not match number of box id positions {len(box_id_positions)}!"
+
+        idx = 0
+        for bids in box_ids_in_ops:
+            box_positions_in_ops.append(box_id_positions[idx:idx+len(bids)])
+            idx += len(bids)
+        assert idx == len(box_id_positions), f"Index {idx} does not match number of box id positions {len(box_id_positions)}!"
+        
+        # should use the flattened version of box box id position and box local states -- easier for indexing in the model activations
+        box_positions_flattened = []
+        box_states_flattened = []
+        for bpos, bstate in zip(box_positions_in_ops, box_states_in_ops):
+            box_positions_flattened.extend(bpos)
+            box_states_flattened.extend(bstate)
+        
+            
+        
+        
+                
+        
+        return {
+            'target_ids': target_ids.to(dtype=torch.long),
+            'prefix_ids': prefix_ids.to(dtype=torch.long),
+            'prefix_attn_masks': prefix_attn_masks.to(dtype=torch.long),
+            'box_id_positions': box_positions_in_ops, 
+            'box_local_states': box_states_in_ops,
+            'box_id_positions_flattened': box_positions_flattened,
+            'box_local_states_flattened': torch.stack(box_states_flattened),
+            'mentioned_objects': mentioned_objects
+        }
+        
+    def build_dummy_activations(self, hidden_dim=5120):
+        """Build dummy activations for testing, according to box_id_positions_flattened length."""
+        dummy_activations = []
+        for i in range(len(self)):
+            data = self[i]
+            n_box_ids = len(data['box_id_positions_flattened'])
+            dummy_activations.append(torch.zeros((n_box_ids, hidden_dim), dtype=torch.float32))
+        return dummy_activations
+    
+
+class IncrementalLocalStateProbeDataLoader(Dataset):
+    """Loads box dataset into format used for probing. This class mostly serves as a unwrapper for the GPTDataloaderForInference class -- for each example, the activations are saved one tensor. But we need to unroll them according to the box ids and local states."""
+    def __init__(self, activations, dataset):
+        self.activations = activations # shape: N_Prompts x [boxids x hidden_dim]
+        self.dataset = dataset # shape: (N_Prompts x N_Boxes)
+        self.oti = dataset.oti
+        # pdb.set_trace()
+        self.expanded_activations, self.labels, self.num_ops, self.counts, self.all_mentioned_objects = self.expand_examples(dataset, None)
+
+
+    def expand_examples(self, dataset, path_to_data):
+        """
+        dataset: the GPTDataloaderForInference dataset
+        path_to_data: path to the original data file, used to compute the mentioned vectors (non-trivial cases, but probably we can just focus on the recall rate (acc for positive examples) for now.)
+        
+        """
+        expanded_activations = []
+        labels = []
+        num_ops = []
+        counts = np.zeros(2)
+        all_mentioned_objects = []
+        # mentioned_objects = [] # ignored for now
+        
+        for i in range(len(dataset)):
+            # pdb.set_trace(header="debug expand examples")
+            data = dataset[i]
+            act = self.activations[i].squeeze(0) # to shape: [N_box_ids, hidden_dim]
+            print(i, act.shape, len(data['box_id_positions_flattened']), data['box_local_states_flattened'].shape)
+            assert act.shape[0] == len(data['box_id_positions_flattened']) == data['box_local_states_flattened'].shape[0], f"Activation shape {act.shape[0]} does not match number of box ids {len(data['box_id_positions_flattened'])} or number of box states {data['box_local_states_flattened'].shape[0]}!"
+            num_boxes_to_unroll = len(data['box_id_positions_flattened'])
+            for i in range(num_boxes_to_unroll):
+                box_id = data['box_id_positions_flattened'][i]
+                box_state = data['box_local_states_flattened'][i]
+                expanded_activations.append(act[i])
+                labels.append(box_state)
+                
+                num_ops.append([len(data['box_id_positions']) - 1] * len(self.oti)) # all objects share the same number of operations
+                all_mentioned_objects.append(data['mentioned_objects'])
+                counts += np.array([torch.sum((box_state == j) * torch.tensor([1.0], dtype=torch.float32)).item() for j in range(2)]).astype(float)
+
+        return expanded_activations, labels, num_ops, counts, all_mentioned_objects
+
+    def __getitem__(self, index):
+        return self.expanded_activations[index], self.labels[index], torch.tensor(self.num_ops[index]).to(torch.long), self.all_mentioned_objects[index]
+    def __len__(self):
+        return len(self.expanded_activations)
+    
+    def get_weights(self):
+        weights = torch.tensor([np.sum(self.counts)], dtype=torch.float32) / torch.tensor(self.counts * (NUM_BOXES + 1), dtype=torch.float32) # why nan?
+        return weights
+    
+    
+    
+class MentionedProbeDataLoader(Dataset):
+    """Loads box dataset into format used for probing."""
+    
+    def __init__(self, activations, path_to_data, object_to_index_map, include_empty=True, min_prev_objects=-1):
+        """Initialize ProbeDataLoader.
+
+        Args:
+            activations (list): List of activations from LM to use as input for the probe.
+            path_to_data (str): Path to corresponding dataset.
+            object_to_index_map (dict[str,int]): Mapping from object names to indices. 
+        """
+        self.include_empty = include_empty
+        self.min_prev_objects = min_prev_objects
+        self.oti = object_to_index_map
+        self.n_objects = len(self.oti.keys())
+        self.examples, self.num_ops, counts, self.mentioned_objects, self.removed_objects = self.load_examples(path_to_data)
+       
+        self.weights = torch.tensor([np.sum(counts)], dtype=torch.float32) / torch.tensor(counts * (NUM_BOXES + 1), dtype=torch.float32)
+        self.activations = activations
+        
+        if len(self.activations) == 0:
+            self.examples = self.examples[0:0]
+            self.num_ops = self.num_ops[0:0]
+            self.mentioned_objects = self.num_ops[0:0]
+        print(len(self.activations), len(self.examples))
+        assert len(self.activations) ==  len(self.examples)
+        
+        self.n = len(self.activations)
+    
+    def get_weights(self):
+        return self.weights
+    
+    def __len__(self):
+        return self.n
+    
+    def __getitem__(self, index):
+        return self.activations[index], self.examples[index], torch.tensor(self.num_ops[index]).to(torch.long), self.mentioned_objects[index], self.removed_objects[index]
+    
+    def load_examples(self, path_to_data):
+        
+        raw_examples = []
+        
+        with open(path_to_data, "r", encoding="UTF-8") as data_f:
+            for line in data_f:
+                raw_examples.append(json.loads(line))
+        
+        
+        assert len(raw_examples) % NUM_BOXES == 0, f"Number of examples is not a multiple of {NUM_BOXES}!"
+        
+        counts = np.zeros((2))
+        examples = []
+        num_ops = []
+        all_mentioned_objects = []
+        all_removed_objects = []
+        box_contents = torch.zeros(self.n_objects) #vector with object positions, void = 0
+        for i, ex in enumerate(raw_examples):
+            s_parts = ex["sentence"].strip(".").split(".")
+            state_mat, removed_objs, _ = generate_state_matrix(ex["sentence"], self.oti, num_boxes=NUM_BOXES, num_obj=self.n_objects)
+            s = s_parts[-1].strip()
+            is_empty = True
+            n_obj = 0
+            if "is empty" not in ex["masked_content"] and "nothing" not in ex["masked_content"]:
+                is_empty = False
+                contents = [_.replace("the ", "") for _ in ex["masked_content"].replace("<extra_id_0> ", "").replace("contains ", "").split(" and ")]
+                for c in contents:
+                    n_obj += 1
+                    # only consider objects that haven't been output already
+                    if self.min_prev_objects < 1 or n_obj > self.min_prev_objects:
+                        oidx = self.oti[c]
+                        box_contents[oidx] = 1
+
+            
+            if (not is_empty or self.include_empty) and n_obj >= self.min_prev_objects: # just to include empty boxes
+                counts += np.array([torch.sum((box_contents == j) * torch.tensor([1.0], dtype=torch.float32)).item() for j in range(2)]).astype(float)
+                examples.append(box_contents)
+                num_ops.append([len(s_parts) - 2] * self.n_objects)
+                box_contents = torch.zeros(self.n_objects)
+                mentioned_objects = torch.zeros(self.n_objects) #vector with mentioned objects
+                removed_objects = torch.zeros(self.n_objects) #vector with removed objects
+                for oidx in removed_objs:
+                    removed_objects[oidx] = 1
+                # o_names = re.findall(r'the ([^ ,.]+) ', " ".join(s_parts[:-1]) + " ")
+                o_names = re.findall(r'\bthe ([^\s,.\n]+)', " ".join(s_parts[:-1]) + " ") # this is a regex to find all object names in the sentence
+                for o in o_names: 
+                    oidx = self.oti[o]
+                    mentioned_objects[oidx] = 1
+                all_mentioned_objects.append(mentioned_objects)
+                all_removed_objects.append(removed_objects)
+                
+
+      
+        counts = np.zeros((2))
+        counts[0] = torch.sum(torch.stack(all_mentioned_objects) == 0).item()
+        counts[1] = torch.sum(torch.stack(all_mentioned_objects) == 1).item()
+        # may need to divide by NUM BOXES but lets leave it for now
+        
+        print("Class distribution:", counts)
+        print("Number of examples:", len(examples))
+        print("Number of Non-Trivial examples:", np.sum(all_mentioned_objects)) # number of mentioned objects
+        print("Number of positve samples", counts[1])
+        print("Number of negative samples", counts[0])
+        
+        return examples, num_ops, counts, all_mentioned_objects, all_removed_objects
