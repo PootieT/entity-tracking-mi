@@ -36,9 +36,9 @@ python probe_experiments/train_probe.py \
     --layer 80 \
     --epo 64 \
     --condition_on the \
-    --checkpoint_root probe_checkpoints/llama3-70b/global_probing \
+    --checkpoint_root probe_experiments/probe_checkpoints/llama3-70b/global_probing \
     --save_model_representation \
-    --model_representation_path representations/llama3-70b/include_empty_conditioned_on_the \
+    --model_representation_path probe_experiments/representations/llama3-70b/include_empty_conditioned_on_the \
     --dataset_subset \
     --ndif_remote \
     --caching_batch_size 16 \
