@@ -37,9 +37,9 @@ python probe_experiments/train_probe.py \
     --epo 64 \
     --binary \
     --condition_on number \
-    --checkpoint_root probe_checkpoints/llama3-70b/incremental_local_state \
+    --checkpoint_root probe_experiments/probe_checkpoints/llama3-70b/incremental_local_state \
     --save_model_representation \
-    --model_representation_path representations/llama3-70b/incremental_local_state \
+    --model_representation_path probe_experiments/representations/llama3-70b/incremental_local_state \
     --dataset_subset \
     --ndif_remote \
     --save_activations_ckpts \
