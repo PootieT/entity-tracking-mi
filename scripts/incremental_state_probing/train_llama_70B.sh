@@ -31,15 +31,15 @@ do
     python probe_experiments/train_probe.py \
     --model_type Llama-3.1-70B \
     --exp_name incremental_local_state \
-    --dataset_path /projectnb/tin-lab/qazhao/ICML26/entity-tracking-gemma/data/boxes_altAlways_default_maxop12_5k \
+    --dataset_path data/boxes_altAlways_default_maxop12_5k \
     --model_path meta-llama/Meta-Llama-3.1-70B\
     --layer $layer \
     --epo 64 \
     --binary \
     --condition_on number \
-    --checkpoint_root probe_checkpoints/llama3-70b/incremental_local_state \
+    --checkpoint_root probe_experiments/probe_checkpoints/llama3-70b/incremental_local_state \
     --load_model_representation \
-    --model_representation_path representations/llama3-70b/incremental_local_state \
+    --model_representation_path probe_experiments/representations/llama3-70b/incremental_local_state \
     --ndif_remote \
     --dataset_subset \
     --object_vocabulary_file data/objects/llama_friendly_objects.csv \
