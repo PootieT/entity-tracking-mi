@@ -12,7 +12,7 @@
 This repo contains the code to reproduce the paper `Do Language Models Track Entities Across State Changes?` accepted in [ICML 2026](https://icml.cc/virtual/2026/poster/64207).
 
 <p align="center">
-  <img src="./assets/example_data.png" alt="Dataset Generation Flowchart" width="50%"/>
+  <img src="./assets/thumbnail.png" alt="Example Box data and comical depiction of how LMs track entities" width="50%"/>
 </p>
 
 # TL;DR
