@@ -36,9 +36,9 @@ do
         --layer $layer \
         --epo 64 \
         --condition_on the \
-        --checkpoint_root probe_checkpoints/codellama-13b/global_the \
+        --checkpoint_root probe_experiments/probe_checkpoints/codellama-13b/global_the \
         --load_model_representation \
-        --model_representation_path representations/codellama-13b/include_empty_conditioned_on_the \
+        --model_representation_path probe_experiments/representations/codellama-13b/include_empty_conditioned_on_the \
         --dataset_subset \
         --object_vocabulary_file data/objects/llama_friendly_objects.csv \
 
