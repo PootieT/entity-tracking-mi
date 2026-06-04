@@ -30,11 +30,11 @@ python probe_experiments/train_probe.py \
     --model_type llama \
     --exp_name global \
     --dataset_path $ROOT/../data/boxes_altAlways_default_maxop12_5k \
-    --model_path /projectnb/tin-lab/sebastian/box-models/checkpoints/CodeLlama-13b-hf \
+    --model_path codellama/CodeLlama-13b-hf \
     --layer 40 \
     --epo 64 \
     --condition_on the \
-    --checkpoint_root probe_checkpoints/codellama-13b/global_the \
+    --checkpoint_root probe_experiments/probe_checkpoints/codellama-13b/global_the \
     --save_model_representation \
-    --model_representation_path representations/codellama-13b/include_empty_conditioned_on_the \
+    --model_representation_path probe_experiments/representations/codellama-13b/include_empty_conditioned_on_the \
     --dataset_subset \
