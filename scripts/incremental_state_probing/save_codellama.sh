@@ -36,9 +36,9 @@ python probe_experiments/train_probe.py \
     --epo 64 \
     --binary_probe \
     --condition_on number \
-    --checkpoint_root probe_checkpoints/codellama-13b/incremental_local_state \
+    --checkpoint_root probe_experiments/probe_checkpoints/codellama-13b/incremental_local_state \
     --save_model_representation \
-    --model_representation_path representations/codellama-13b/incremental_local_state \
+    --model_representation_path probe_experiments/representations/codellama-13b/incremental_local_state \
     --dataset_subset \
     --object_vocabulary_file data/objects/llama_friendly_objects.csv \
     --incremental_local_state \
