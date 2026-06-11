@@ -13,7 +13,6 @@ from numpy.random import poisson
 
 from collections import Counter
 
-
 # Possible operations
 _OPERATIONS_DICT = {
     "move": "Move {content} {from_prep} Box {box1_num} to Box {box2_num}.",
@@ -26,14 +25,16 @@ _OPERATIONS_DICT = {
 #     "remove": "Take {content} out of Container {box1_num}.",
 #     "put": "Place {content} inside Container {box1_num}.",
 # }
-_OPERATIONS_DICT_ALT = copy.deepcopy(_OPERATIONS_DICT)  # change to same as original operation because we only want difference in order of initial state description
+_OPERATIONS_DICT_ALT = copy.deepcopy(
+    _OPERATIONS_DICT)  # change to same as original operation because we only want difference in order of initial state description
 
-_ALT_BOX_NOUN = "Box" # "Container"  change back to Box because we are not investigating circuit stuff, not on exact form during training/testing
-
+_ALT_BOX_NOUN = "Box"  # "Container"  change back to Box because we are not investigating circuit stuff, not on exact form during training/testing
 
 _MODIFIERS = ["big", "small", "blue", "green", "red", "yellow"]
 
-_SPLITS_PROP = {"train": 0.45, "dev": 0.1, "test": 0.45}
+# _SPLITS_PROP = {"train": 0.45, "dev": 0.1, "test": 0.45}
+# _SPLITS_PROP = {"train": 0.5, "test": 0.5}
+_SPLITS_PROP = {"train": 1.0}
 
 _PROMPT_INSTRUCTION = "Here is an entity tracking task. You are given a set of boxes and operations that move objects between boxes. You will answer the content of certain boxes after the given operations."
 
@@ -42,15 +43,16 @@ class WorldState:
     """
     A class representing a world state.
     """
-    
+
     def __init__(
-        self,
-        all_objects,
-        num_boxes,
-        max_items_per_box,
-        expected_num_items_per_box,
-        contents=None,
-        zero_shot=True,
+            self,
+            all_objects,
+            num_boxes,
+            max_items_per_box,
+            expected_num_items_per_box,
+            contents=None,
+            zero_shot=True,
+            fix_object_count_per_phrase: Optional[int] = None
     ):
         """Initialize WorldState.
 
@@ -63,6 +65,8 @@ class WorldState:
             zero_shot (bool, optional): Whether to use zero-shot/in-context learning data format. Defaults to False.
             used_object (set): All objects used.
             initial_state (dict[list]): Store the initialized state of the boxes.
+            fix_object_count_per_phrase (int, optional): Number of objects per phrase (description or operation.
+                Defaults to None. 1 means initial box states contains 1 object. Operation can only move 1 object.
 
         Raises:
             KeyError: Raised if invalid object is added to box.
@@ -74,6 +78,7 @@ class WorldState:
         self.num_boxes = num_boxes
         self.max_items_per_box = max_items_per_box
         self.expected_num_items_per_box = expected_num_items_per_box
+        self.fix_object_count_per_phrase = fix_object_count_per_phrase
         self.zero_shot = zero_shot
         self.used_objects = set()
         self.used_boxes = set()
@@ -103,7 +108,7 @@ class WorldState:
 
         Args:
             box (int): Box number.
-            content (set): Set of objects to be removed. 
+            content (set): Set of objects to be removed.
 
         Raises:
             KeyError: Raised if non-exstent object is removed.
@@ -127,8 +132,8 @@ class WorldState:
                 if c not in self.void:
                     raise KeyError(f"{c} is already in another box!")
             if (
-                self.max_items_per_box > 0
-                and (len(content) + len(self.boxes[box])) > self.max_items_per_box
+                    self.max_items_per_box > 0
+                    and (len(content) + len(self.boxes[box])) > self.max_items_per_box
             ):
                 raise ValueError(
                     f"Attempted to add more than MAX_ITEMS_PER_BOX \
@@ -138,8 +143,8 @@ class WorldState:
             self.boxes[box].update(content)
         else:
             if (
-                self.max_items_per_box > 0
-                and (1 + len(self.boxes[box])) > self.max_items_per_box
+                    self.max_items_per_box > 0
+                    and (1 + len(self.boxes[box])) > self.max_items_per_box
             ):
                 raise ValueError(
                     f"Attempted to add more than MAX_ITEMS_PER_BOX \
@@ -154,8 +159,8 @@ class WorldState:
                 if c not in self.boxes[from_box]:
                     raise KeyError(f"{c} not in box #{from_box}")
             if (
-                self.max_items_per_box > 0
-                and (len(content) + len(self.boxes[to_box])) > self.max_items_per_box
+                    self.max_items_per_box > 0
+                    and (len(content) + len(self.boxes[to_box])) > self.max_items_per_box
             ):
                 raise ValueError(
                     f"Attempted to add more than MAX_ITEMS_PER_BOX \
@@ -165,8 +170,8 @@ class WorldState:
             self.boxes[to_box].update(content)
         else:
             if (
-                self.max_items_per_box > 0
-                and (1 + len(self.boxes[to_box])) > self.max_items_per_box
+                    self.max_items_per_box > 0
+                    and (1 + len(self.boxes[to_box])) > self.max_items_per_box
             ):
                 raise ValueError(
                     f"Attempted to add more than MAX_ITEMS_PER_BOX \
@@ -185,30 +190,30 @@ class WorldState:
 
     def add_used_objects(self, objects):
         """Add new objects to the used objects list.
-        
+
         Args:
             objects (list or set): Objects to be added to the used objects list.
         """
         self.used_objects.update(objects)
-    
+
     def get_used_objects(self):
         """Retrieve the list of used objects.
-        
+
         Returns:
             list: List of unique objects used in the prompts.
         """
         return list(self.used_objects)
-    
+
     def add_used_boxes(self, boxes):
         """Add boxes that have been operated on to the used boxes list.
 
         Args:
             boxes (list or set): Box IDs involved in an operation.
         """
-        if isinstance(boxes, int):  
+        if isinstance(boxes, int):
             boxes = [boxes]
 
-        self.used_boxes.update(boxes) 
+        self.used_boxes.update(boxes)
 
     def get_used_boxes(self):
         """Retrieve the list of used boxes.
@@ -219,12 +224,12 @@ class WorldState:
         return list(self.used_boxes)
 
     def get_counterfactuals(
-        self,
-        sentence: str,
-        query_id: int,
-        rand_obj: bool=True,
-        rand_query_id: bool=True,
-        rand_box_id: bool=False
+            self,
+            sentence: str,
+            query_id: int,
+            rand_obj: bool = True,
+            rand_query_id: bool = True,
+            rand_box_id: bool = False
     ) -> str:
         """Generate counterfactuals for patching circuit tracing
 
@@ -237,7 +242,9 @@ class WorldState:
             alt_objects = random.sample(list(self.void), k=len(self.used_objects))
             obj_map = {o: alt_objects[i] for i, o in enumerate(self.used_objects)}
             for old_obj, new_obj in obj_map.items():
-                new_sentence = new_sentence.replace(f" {old_obj} ", f" {new_obj} ").replace(f" {old_obj},", f" {new_obj},").replace(f" {old_obj}.", f" {new_obj}.")
+                new_sentence = new_sentence.replace(f" {old_obj} ", f" {new_obj} ").replace(f" {old_obj},",
+                                                                                            f" {new_obj},").replace(
+                    f" {old_obj}.", f" {new_obj}.")
 
         # randomly choose a new query id
         if rand_query_id:
@@ -246,7 +253,7 @@ class WorldState:
                 rand_query_id = random.choice(range(self.num_boxes))
 
             qid_idx = new_sentence.rfind(str(query_id))
-            new_sentence = new_sentence[:qid_idx] + str(rand_query_id) + new_sentence[qid_idx+1:]
+            new_sentence = new_sentence[:qid_idx] + str(rand_query_id) + new_sentence[qid_idx + 1:]
 
         # randomly map old box ids to new box ids (instead of describing box states in order)
         if rand_box_id:
@@ -258,15 +265,14 @@ class WorldState:
 
         return new_sentence
 
-
-
     @staticmethod
     def sample_initial_world_state(
-        all_objects,
-        num_boxes,
-        max_items_per_box,
-        expected_num_items_per_box,
-        zero_shot=True, #changed
+            all_objects,
+            num_boxes,
+            max_items_per_box,
+            expected_num_items_per_box,
+            zero_shot=True,  # changed
+            fix_object_count_per_phrase: Optional[int] = None,
     ):
         s = WorldState(
             all_objects,
@@ -274,15 +280,20 @@ class WorldState:
             max_items_per_box,
             expected_num_items_per_box,
             zero_shot=zero_shot,
+            fix_object_count_per_phrase=fix_object_count_per_phrase,
         )
 
-        num_items = np.maximum(poisson(expected_num_items_per_box, num_boxes), 1)   # At least one items
+        if fix_object_count_per_phrase is not None:
+            assert 0 < fix_object_count_per_phrase < max_items_per_box
+            num_items = [fix_object_count_per_phrase for _ in range(num_boxes)]
+        else:
+            num_items = np.maximum(poisson(expected_num_items_per_box, num_boxes), 1)  # At least one items
 
-        while sum(num_items) > len(all_objects):
-            num_items = poisson(expected_num_items_per_box, num_boxes)
+            while sum(num_items) > len(all_objects):
+                num_items = poisson(expected_num_items_per_box, num_boxes)
 
-        if max_items_per_box > 0:
-            num_items = np.minimum(num_items, [max_items_per_box])
+            if max_items_per_box > 0:
+                num_items = np.minimum(num_items, [max_items_per_box])
 
         for i, n in enumerate(num_items):
             items = np.random.choice(list(s.void), n, replace=False)
@@ -292,14 +303,14 @@ class WorldState:
 
         return s
 
-    def state_description(self, box=None, alt_description: Union[bool, str]=False, box_noun="Box"):
+    def state_description(self, box=None, alt_description: Union[bool, str] = False, box_noun="Box"):
         if box is not None:
             s = self._describe_box(
                 box, individual=True, alt_description=alt_description, box_noun=box_noun
             )
             return s[0].upper() + s[1:]
         else:
-            sep = ", " if alt_description in [True, False, "list"] else "\n" if alt_description=="enum" else ",\n"
+            sep = ", " if alt_description in [True, False, "list"] else "\n" if alt_description == "enum" else ",\n"
             s = sep.join(
                 [
                     self._describe_box(
@@ -319,7 +330,7 @@ class WorldState:
                 return s[0].upper() + s[1:]
 
     def _describe_box(
-        self, box, individual=True, alt_description: Union[bool, str]=False, box_noun="Box"
+            self, box, individual=True, alt_description: Union[bool, str] = False, box_noun="Box"
     ):
         box_name = str(box)
         # if box_noun == "Container":
@@ -354,13 +365,14 @@ class WorldState:
 
             # return f"{first_char}he {box_name} box contains the {list(self.boxes[box])[0]}{final_char}"
         else:
-            box_contents = " and ".join([f"the {c}" for c in random.sample(self.boxes[box], len(self.boxes[box]))])  #sorted(self.boxes[box])
+            box_contents = " and ".join(
+                [f"the {c}" for c in random.sample(self.boxes[box], len(self.boxes[box]))])  # sorted(self.boxes[box])
             if alt_description == True:
                 return f"{box_contents} are in {box_noun} {box_name}{final_char}"
             elif alt_description == "enum":
                 return f"{box_noun} {box_name}: {box_contents}{final_char}"
             elif alt_description == "list":
-                return f"[{box_contents.replace('the ','').replace(' and ', ', ').replace('  ', ' ')}]"
+                return f"[{box_contents.replace('the ', '').replace(' and ', ', ').replace('  ', ' ')}]"
             else:
                 return f"{box_noun} {box_name} contains {box_contents}{final_char}"
             # return f"{first_char}he {box_name} box contains {box_contents}{final_char}"
@@ -427,6 +439,12 @@ def parse_args():
         default=3,
         help="Maximum number of items per box.",
     )
+    parser.add_argument(
+        "--fix_object_count_per_phrase",
+        type=int,
+        default=None,
+        help="If not None, fixing number of items per phrase (description and operation).",
+    )
     parser.add_argument("--num_samples", type=int, default=100)
     parser.add_argument(
         "--num_operations",
@@ -444,6 +462,16 @@ def parse_args():
         type=str,
         default="move,remove,put",
         help="Comma separated list of operations included in the dataset.",
+    )
+    parser.add_argument(
+        "--favor_same_box_operation",
+        action="store_true",
+        help="If set, operations sampled will much more likely to occur on the same box.",
+    )
+    parser.add_argument(
+        "--favor_put_used_objects",
+        action="store_true",
+        help="If set, objects used in operation will much more likely to be used than new objects.",
     )
 
     parser.add_argument(
@@ -506,7 +534,7 @@ def parse_args():
 
     args = parser.parse_args()
     args.allowed_operations = args.allowed_operations.split(",")
-    args.cft_formats = args.cft_formats.split(",") if  args.cft_formats else []
+    args.cft_formats = args.cft_formats.split(",") if args.cft_formats else []
     args.exp_formats = args.exp_formats.split(",") if args.exp_formats else []
     args.prompt_formats = args.prompt_formats.split(",") if args.prompt_formats else []
     return args
@@ -550,7 +578,7 @@ def random_nonempty_subset(s):
 
 
 def describe_operation(
-    op, box1, box2, contents, alt_description=False, all_contents=False
+        op, box1, box2, contents, alt_description=False, all_contents=False
 ):
     """
     Describe operation based on operation type, box 1, box 2 (optional)
@@ -586,9 +614,9 @@ def describe_operation(
         content_verb = "is" if len(contents) == 1 else "are"
         from_prep = "from" if not alt_description else "in"
     if box1 is not None:
-        box1_num = str(box1) #if not alt_description else chr(box1 + 65)
+        box1_num = str(box1)  # if not alt_description else chr(box1 + 65)
     if box2 is not None:
-        box2_num = str(box2) #if not alt_description else chr(box2 + 65)
+        box2_num = str(box2)  # if not alt_description else chr(box2 + 65)
     op_str = s.format(
         box1_num=box1_num,
         box2_num=box2_num,
@@ -600,16 +628,16 @@ def describe_operation(
     return op_str[0].upper() + op_str[1:]
 
 
-def example_to_t5(ex, state, zero_shot=True, modifier_map=None, pragmatic=False): #changed
-    """ 
+def example_to_t5(ex, state, zero_shot=True, modifier_map=None, pragmatic=False):  # changed
+    """
     Turns example into format used to train/test T5 models.
 
     Args:
         ex (str): Description of initial state and operations.
         state (WorldState): The current state of the world for retrieving used objects and initial state.
-        zero_shot (bool, optional): Output zero-shot/in-context 
+        zero_shot (bool, optional): Output zero-shot/in-context
             learning format. Defaults to False.
-        modifier_map (dict, optional): Map to replace object names with modified 
+        modifier_map (dict, optional): Map to replace object names with modified
             object names. Defaults to None.
         pragmatic (bool, optional): Whether modifiers should be omitted. Defaults to False.
 
@@ -638,20 +666,20 @@ def example_to_t5(ex, state, zero_shot=True, modifier_map=None, pragmatic=False)
     # modified to get rid of placeholder
     if "is empty" in last_sent:
         masked_sentence = (
-            ".".join(sentences[0:-2])
-            + "."
-            + last_sent.replace("is empty", "contains")
+                ".".join(sentences[0:-2])
+                + "."
+                + last_sent.replace("is empty", "contains")
         )
         masked_content = "empty"
-    else: 
+    else:
         start = last_sent.index("contains") + len("contains")
         if zero_shot:
             start = last_sent.index("contains") + len("contains ")
         masked_sentence = (
-            ".".join(sentences[0:-2]) + "." + last_sent[:start]
+                ".".join(sentences[0:-2]) + "." + last_sent[:start]
         )
-        masked_content = last_sent[start:] 
-        
+        masked_content = last_sent[start:]
+
     initial_state_serializable = {
         box: list(contents) for box, contents in state.initial_state.items()
     }
@@ -664,13 +692,22 @@ def example_to_t5(ex, state, zero_shot=True, modifier_map=None, pragmatic=False)
     }
 
 
+def get_box_operation_counts(operation_sequence: List[str], box_names: List[int]) -> List[int]:
+    op_counts = [0] * len(box_names)
+    for op in operation_sequence:
+        box_id = int(op[op.find("Box ") + 4])
+        op_counts[box_id] += 1
+    return op_counts
+
+
 def sample_operation_sequences(
-    world_state,
-    operations,
-    box_names,
-    num_operations,
-    generate_alternative_forms=False,
-    all_contents_operation=False,
+        world_state,
+        operations,
+        box_names,
+        num_operations,
+        generate_alternative_forms=False,
+        all_contents_operation=False,
+        favor_same_box_operation=False,
 ):
     """Performs operation sequence sampling.
 
@@ -681,6 +718,7 @@ def sample_operation_sequences(
         num_operations: Total number of operations in a single sequence.
         generate_alternative_forms: Whether to generate altenatively phrased descriptions (e.g. Obj is in Box X).
         all_contents_operation: Whether to generate operations of the form "Move the contents from Box X to Box Y."
+        favor_same_box_operation: Whether to sample operations more for boxes with more operations.
 
     Returns:
         operation_sequence: A list of sampled operations.
@@ -713,7 +751,14 @@ def sample_operation_sequences(
             # Sample an operation (each operation has different arity)
             op = random.choice(operations)
             print(f"Selected operation: {op}")
-            box1 = random.choice(box_names)
+            if not favor_same_box_operation:
+                box1 = random.choice(box_names)
+            else:
+                boxes_weights = np.array(get_box_operation_counts(operation_sequence[1:], box_names))
+                randomness_weights = 0.08
+                boxes_weights = (boxes_weights + randomness_weights) / np.sum(
+                    boxes_weights + randomness_weights)  # add randomness and normalize
+                box1 = int(np.random.choice(box_names, p=boxes_weights))
             all_contents = False
             if op == "empty":
                 try:
@@ -724,32 +769,40 @@ def sample_operation_sequences(
             elif op == "move":
                 if len(world_state.boxes[box1]) < 1:
                     continue
-                box2 = random.choice(box_names[0:box1] + box_names[box1 + 1 :])
+                box2 = random.choice(box_names[0:box1] + box_names[box1 + 1:])
                 contents = random_nonempty_subset(world_state.boxes[box1])
                 if all_contents_operation and len(contents) == len(
-                    world_state.boxes[box1]
+                        world_state.boxes[box1]
                 ):
                     all_contents = True
 
                 try:
                     world_state.move_to_box(box1, box2, contents)
-                    world_state.add_used_objects(contents) 
+                    world_state.add_used_objects(contents)
                     world_state.add_used_boxes(box1)
                     world_state.add_used_boxes(box2)
                     break
                 except (ValueError, KeyError):
                     continue
             elif op == "put":
-                exp_value = max(1, int(world_state.expected_num_items_per_box / 2))
-                no_items = poisson(exp_value)
+                if world_state.fix_object_count_per_phrase is not None:
+                    no_items = 1
+                else:
+                    exp_value = max(1, int(world_state.expected_num_items_per_box / 2))
+                    no_items = poisson(exp_value)
                 if (
-                    world_state.max_items_per_box > 0
-                    and (no_items + len(world_state.boxes[box1]))
-                    > world_state.max_items_per_box
+                        world_state.max_items_per_box > 0
+                        and (no_items + len(world_state.boxes[box1]))
+                        > world_state.max_items_per_box
                 ) or no_items < 1:
                     continue
 
-                contents = random.sample(list(world_state.void), no_items)
+                if args.favor_put_used_objects:
+                    used_void_intersect = world_state.used_objects.intersection(world_state.void)
+                    used_void_intersect = used_void_intersect if len(used_void_intersect) > 0 else world_state.void
+                    contents = random.sample(list(used_void_intersect), min(no_items, len(used_void_intersect)))
+                else:
+                    contents = random.sample(list(world_state.void), no_items)
 
                 try:
                     world_state.add_to_box(box1, contents)
@@ -766,7 +819,7 @@ def sample_operation_sequences(
                 try:
                     world_state.remove_from_box(box1, contents)
                     world_state.add_used_objects(contents)
-                    world_state.add_used_boxes(box1) 
+                    world_state.add_used_boxes(box1)
                     break
                 except (ValueError, KeyError):
                     continue
@@ -800,7 +853,7 @@ def check_state_signature(state, state_signature_set, max_items_per_box=9):
     Args:
         state (WorldState): A WorldState.
         state_signature_set (set): A set of state signatures.
-        max_items_per_box (int, optional): Maximum number of items per box, 
+        max_items_per_box (int, optional): Maximum number of items per box,
             used to compute signatures. Defaults to 9.
 
     Returns:
@@ -920,289 +973,15 @@ def pragmatify(state, operation, modifier_map):
 
     if toks[0] == "Move":
         return (
-            toks[0] + " " + " and ".join(new_contents) + " " + " ".join(toks[-6:]) + "."
+                toks[0] + " " + " and ".join(new_contents) + " " + " ".join(toks[-6:]) + "."
         )
     elif toks[0] == "Remove":
         return (
-            toks[0] + " " + " and ".join(new_contents) + " " + " ".join(toks[-3:]) + "."
+                toks[0] + " " + " and ".join(new_contents) + " " + " ".join(toks[-3:]) + "."
         )
     else:
         return operation
 
-
-def generate_explanations(
-    states: List[WorldState],
-    ops: List[str],
-    query_box: int,
-    format:str,
-    alt_description: bool
-):
-    """Generate pre/post hoc ground-truth explanations.
-
-    Args:
-        states (List[WorldState]): List of WorldStates so far
-        ops (List[str]): List of description of the operations.
-        query_box (int): the query box id
-        format (str): Explanation format.
-            - all_text: same description format as the prompt, describing all boxes
-            - query_text: same description format as the prompt, describing only the query box
-            - all_enum: format like "Box 0: apple, banana", describing all boxes
-            - query_enum: format like "Box 0: apple, banana", describing only the query box
-            - all_list: format like "[apple, banana]", describing all boxes
-            - query_list: format like "[apple, banana]", describing only the query box
-        alt_description: Whether the data prompt is in normal or alternative description
-
-    Raises:
-        ValueError: Raised if format is unknown / described in unknown format.
-
-    Returns:
-        str: explanation string of box states over movements
-    """
-    assert format in {"all_text", "query_text", "all_enum", "query_enum", "all_list", "query_list"}
-    explanation = ""
-    alt_description = format.split("_")[1] if "text" not in format else alt_description
-    for i, (state, op) in enumerate(zip(states, ops)):
-        if format.endswith("_text"):
-            if i == 0:
-                state_str = "Initially, "
-            else:
-                op_ing = op.replace("Move ", "moving ").replace("Put ", "putting ").replace("Remove ", "removing ")
-                state_str = f"After {op_ing}, "
-            sep = " "
-        else:
-            if i == 0:
-                state_str = "#### Initial State\n"
-            else:
-                state_str = f"#### Operation {i}: {op}\n"
-            sep = "\n"
-
-        state_desc = state.state_description(
-            box=None if format.startswith("all_") else query_box,
-            alt_description=alt_description
-        )
-        if format.endswith("_text"): # since it is in a sentence, we lowercase first letter
-            state_desc = state_desc[0].lower() + state_desc[1:]
-
-        explanation += f"{state_str}{state_desc}{sep}"
-    return explanation.strip()
-
-
-def get_fixed_one_shot(alt_description: bool) -> Tuple[List[WorldState], List[str], int]:
-    """Box 0 contains boat, shoe, and television. Box 1 contains camera, car, and plane.
-    Box 3 contains fan. Box 4 contains cross, file, and note. Box 5 contains chemical.
-    Box 6 contains nothing. Move camera from Box 1 to Box 3. Box 3 contains"""
-    all_objs = ["boat", "shoe", "television", "fan", "cross", "file", "note", "chemical", "camera", "car", "plane"]
-
-    s1_data = {
-        0: ["boat", "shoe", "television"],
-        1: ["camera", "car", "plane"],
-        2: [],
-        3: ["fan"],
-        4: ["cross", "file", "note"],
-        5: ["chemical"],
-        6: []
-    }
-    s2_data = s1_data.copy()
-    s2_data[1] = ["car", "plane"]
-    s2_data[3] = ["fan", "camera"]
-
-    s1, s2 = WorldState(all_objs, 7, 3, 1), WorldState(all_objs, 7, 3, 1)
-
-    for s, s_data in zip([s1, s2], [s1_data, s2_data]):
-        for i, items in s_data.items():
-            s.add_to_box(i, items)
-            s.add_used_objects(items)
-            s.initial_state[f"box_{i}"] = set(items)
-
-    if alt_description:
-        operation = "Move the camera in Box 1 to Box 3"  # TODO not hard code this?
-    else:
-        operation = "Move the camera from Box 1 to Box 3"
-    query_box = 3
-    return [s1, s2], [s1.state_description(alt_description=alt_description), operation], query_box
-
-
-def format_shot(
-    masked_sentence: str,
-    masked_content: str,
-    states: List[WorldState],
-    ops: List[str],
-    query_box: int,
-    prompt_format: str,
-    explanation_format: str,
-    alt_description: bool,
-    counterfactual_kwargs: Optional[List[Dict[str, bool]]]=None,
-) -> Tuple[str, List[str]]:
-    """helper function for format_prompt. see documentation there"""
-    prompt = f"## QUESTION: {masked_sentence}\n" \
-             f"### ANSWER:\n"
-    if prompt_format.endswith("_completed"):
-        if "no_exp" in prompt_format:
-            prompt += f"Box {query_box} contains {masked_content}"
-        elif "pre_exp" in prompt_format:
-            exp = generate_explanations(states, ops, query_box, explanation_format, alt_description)
-            prompt += f"{exp}\n" \
-                      f"#### FINAL ANSWER:\n" \
-                      f"Box {query_box} contains {masked_content}"
-        elif "post_exp" in prompt_format:
-            exp = generate_explanations(states, ops, query_box, explanation_format, alt_description)
-            prompt += f"Box {query_box} contains {masked_content}\n" \
-                      f"### EXPLANATION:\n" \
-                      f"{exp}"
-        else:
-            raise NotImplementedError
-    else:
-        prompt += f"Box {query_box} contains"
-
-    # now generate the counterfactuals for the shot if requested
-    counterfactuals = []
-    if counterfactual_kwargs is not None:
-        for counterfactual_kwarg in counterfactual_kwargs:
-            cft = states[-1].get_counterfactuals(prompt, query_box, **counterfactual_kwarg)
-            counterfactuals.append(cft)
-    return prompt, counterfactuals
-
-
-def format_prompt(
-    out_d: Dict[str, Any],
-    prompt_format: str,
-    states: List[WorldState],
-    ops: List[str],
-    query_box: int,
-    explanation_format:str,
-    alt_description: bool,
-    counterfactual_kwargs: Optional[List[Dict[str, bool]]]
-) -> Tuple[str, List[str], List[Dict[int, List[int]]]]:
-    """Generate pre/post hoc ground-truth explanations.
-
-    Args:
-        out_d (Dict[str, any]): Dictionary of outputs for each datapoint
-        prompt_format (str): Prompt format. {instruct_}{no/pre/post}_exp{_1s}{_completed}
-            - instruct: whether instruction string is prefixed before
-            - {no/pre/post}_exp: whether the prompt will have explanation, before, or after
-                the prediction
-            - 1s: whether 1 shot example is given
-            - completed: whether test instance ground truth explanation/prediction is also generated
-        states (List[WorldState]): List of WorldStates so far
-        ops (List[str]): List of description of the operations.
-        query_box (int): the query box id
-        explanation_format (str): Explanation format. see generate_explanation documentation
-        alt_description: Whether the data prompt is in normal or alternative description
-        counterfactual_kwargs: List kwargs for different sets of counterfactuals to generate
-            for test prompt.
-
-    Raises:
-        ValueError: Raised if format is unknown / described in unknown format.
-
-    Returns:
-        str: explanation string of box states over movements
-    """
-    prompt = ""
-    if prompt_format.startswith("instruct_"):
-        prompt += _PROMPT_INSTRUCTION + "\n\n"
-
-    # format the 1-shot prompt instance TODO generalize to few-shots and possibly dynamic shots
-    if "1s" in prompt_format:
-        shot_states, shot_operations, shot_query_box = get_fixed_one_shot(alt_description)
-        shot_sentence = shot_operations[0] + " " + ". ".join(shot_operations[1:]) + ". "+ shot_states[-1].state_description(shot_query_box)
-        shot_masked_content = shot_sentence[shot_sentence.rfind("contains")+9:-1]
-        shot_sentence_masked = shot_sentence[:shot_sentence.rfind("contains")+8]
-        shot_prompt_format = prompt_format+"_completed" if not prompt_format.endswith("_completed") else prompt_format
-        shot_prompt, _ = format_shot(
-            shot_sentence_masked, shot_masked_content, shot_states, shot_operations, shot_query_box,
-            shot_prompt_format, explanation_format, alt_description
-        )
-        prompt += shot_prompt + "\n\n"
-
-    # format test prompt
-    test_prompt, cft_test_prompts = format_shot(
-        out_d["sentence_masked"], out_d["masked_content"], states, ops, query_box,
-        prompt_format, explanation_format, alt_description,
-        counterfactual_kwargs=counterfactual_kwargs
-    )
-    prompt += test_prompt
-
-    # add annotation (of positions) for the prompt
-    exp_annotation = get_explanation_annotations(prompt, test_prompt, explanation_format, ops, query_box)
-
-    # if counterfactuals are needed, swap the test prompts with them
-    cft_prompts = []
-    if cft_test_prompts:
-        cft_prompts = [prompt.replace(test_prompt, cft_test_prompt) for cft_test_prompt in cft_test_prompts]
-
-    return prompt, cft_prompts, exp_annotation
-
-def find_nth(haystack: str, needle: str, n: int, start: int=0) -> int:
-    start = haystack.find(needle,start)
-    while start >= 0 and n > 1:
-        start = haystack.find(needle, start+len(needle))
-        n -= 1
-    return start
-
-def get_individual_obj_starts(prompt: str, start: int, end: int) -> List[int]:
-    indices = []
-    obj_strs = prompt[start:end].replace(", ", " ").replace("and ", " ").replace("the ", " ").replace("  "," ").split()
-    for i, obj_str in enumerate(obj_strs):
-        indices.append(start + prompt[start:end].find(obj_str))
-    return indices
-
-
-def get_explanation_annotations(
-    prompt:str,
-    test_prompt:str,
-    explanation_format: str,
-    ops: List[str],
-    query_box: int,
-) -> List[Dict[str, Union[int, List[int]]]]:
-    """
-    generate set of explanation attributes for interp work:
-    For each operation, collect position indices (char) for:
-    {
-        "start": int,
-        "end": int,
-        "box": int,
-        "objects": List[int]
-    }
-
-    Args:
-        prompt (str): prompt string
-
-    Returns:
-        List (Dict[str, Union[int, List[int]]]): List of explanation attributes for each operation
-    """
-    attributes = [{} for _ in ops]
-    start = prompt.find(test_prompt)
-    init_inter_op_sep = "Initially," if "text" in explanation_format else "#### Initial"
-    inter_op_sep = "After " if "text" in explanation_format else "#### Operation"
-    for i, op in enumerate(ops):
-        start = prompt.find(init_inter_op_sep if i == 0 else inter_op_sep, start)
-        end = max(prompt.find(inter_op_sep, start+1), prompt.find("#### FINAL ANSWER", start+1))
-        end = len(prompt)-1 if end == -1 else end-1
-
-        # now find occurrence of query box id
-        start_next_line = start if "text" in explanation_format else prompt.find("\n", start)+1
-        if explanation_format == "all_list":
-            box = find_nth(prompt,f"[", query_box+2, start_next_line)
-        elif explanation_format == "query_list":
-            box = start_next_line
-        else:
-            box = prompt.find(f"Box {query_box}", start_next_line) + 4
-        assert box < end
-
-        # now find occurrence of objects in box
-        if "list" in explanation_format: # [[something, something], ...
-            objs = get_individual_obj_starts(prompt, box+1, prompt.find("]",box))
-        elif "enum" in explanation_format: # box x: something, something
-            objs = get_individual_obj_starts(prompt, box + 3, prompt.find("\n", box))
-        else: # text,
-            if prompt[box+1] in {".", ","}:  # something something is in box x.
-                objs = get_individual_obj_starts(prompt, prompt[:box].rfind(",")+1, box - 11)
-            else: # box x contains the something, something, or
-                objs = get_individual_obj_starts(prompt, box+16, prompt.find(".", box))
-        attributes[i] = {"start": start, "end": end, "box": box, "objects": objs}
-        assert all(obj < end for obj in objs)
-
-    return attributes
 
 def main(args):
     """
@@ -1210,7 +989,7 @@ def main(args):
     """
     print(args)
 
-    assert args.max_items_per_box < 10, "max_items_per_box cannot be greater than 9."
+    # assert args.max_items_per_box < 10, "max_items_per_box cannot be greater than 9."  # not sure why
 
     random.seed(args.seed)
     np.random.seed(args.seed)
@@ -1243,6 +1022,7 @@ def main(args):
                 max_items_per_box=args.max_items_per_box,
                 expected_num_items_per_box=args.expected_num_items_per_box,
                 zero_shot=args.zero_shot,
+                fix_object_count_per_phrase=args.fix_object_count_per_phrase,
             )
             (
                 operation_sequence,
@@ -1255,6 +1035,7 @@ def main(args):
                 max_num_operations,
                 generate_alternative_forms=generate_alt_descriptions,
                 all_contents_operation=args.all_contents_operation,
+                favor_same_box_operation=args.favor_same_box_operation,
             )
             sampled_sequences.append(
                 (world_states, operation_sequence, operation_sequence_alt)
@@ -1277,22 +1058,22 @@ def main(args):
         state_signature_sets = {
             "train": set(
                 state_signatures_all[
-                    0 : int(state_signatures_count * _SPLITS_PROP["train"])
+                0: int(state_signatures_count * _SPLITS_PROP["train"])
                 ]
             ),
-            "dev": set(
-                state_signatures_all[
-                    int(state_signatures_count * _SPLITS_PROP["train"]) : int(
-                        state_signatures_count
-                        * (_SPLITS_PROP["train"] + _SPLITS_PROP["dev"])
-                    )
-                ]
-            ),
-            "test": set(
-                state_signatures_all[
-                    -int(state_signatures_count * _SPLITS_PROP["test"]) :
-                ]
-            ),
+            # "dev": set(
+            #     state_signatures_all[
+            #         int(state_signatures_count * _SPLITS_PROP["train"]) : int(
+            #             state_signatures_count
+            #             * (_SPLITS_PROP["train"] + _SPLITS_PROP["dev"])
+            #         )
+            #     ]
+            # ),
+            # "test": set(
+            #     state_signatures_all[
+            #         -int(state_signatures_count * _SPLITS_PROP["test"]) :
+            #     ]
+            # ),
         }
         # print(binary_states)
         # store all initial states to make sure we don't have exact duplicates
@@ -1325,9 +1106,9 @@ def main(args):
             # find correct bucket
             for split, size in splits_size.items():
                 if count_num[split] < size and check_state_signature(
-                    states[0],
-                    state_signature_sets[split],
-                    max_items_per_box=args.max_items_per_box,
+                        states[0],
+                        state_signature_sets[split],
+                        max_items_per_box=args.max_items_per_box,
                 ):
                     count_num[split] = count_num[split] + 1
                     existing_states.add(states[0])
@@ -1377,8 +1158,8 @@ def main(args):
                 for box in range(args.num_boxes):
                     # increase numops if contents of boxes changed compared to previous state
                     if (
-                        prev_state is not None
-                        and prev_state.boxes[box] != state.boxes[box]
+                            prev_state is not None
+                            and prev_state.boxes[box] != state.boxes[box]
                     ):
                         numops[box] += 1
                         numops_by_type[box][op_type] += 1
@@ -1392,7 +1173,7 @@ def main(args):
                         pragmatic=pragmatic,
                     )
                     if "contains" in out_d["masked_content"] or (
-                        state.zero_shot and "nothing" not in out_d["masked_content"]
+                            state.zero_shot and "nothing" not in out_d["masked_content"]
                     ):
                         num_objs = out_d["masked_content"].count(" and ") + 1
                     else:
@@ -1415,20 +1196,11 @@ def main(args):
                         for k in default_args.keys():
                             if k in cft_format:
                                 cft_args[k] = True
-                        cft_str = "_".join(k for k,v in cft_args.items() if v)
+                        cft_str = "_".join(k for k, v in cft_args.items() if v)
                         cft_args_map[cft_str] = cft_args
                         out_d[f"counterfactual_{cft_str}"] = state.get_counterfactuals(out_d["sentence"], box, **cft_args)
 
-                    # add prompts with groundtruth explanations (along with respective counterfactuals)
-                    out_d["annotations"] = {"prompt": {}, "explanation":{}}
-                    for prompt_format in args.prompt_formats:
-                        for exp_format in args.exp_formats:
-                            prompt, cft_prompts, exp_annotations = format_prompt(out_d, prompt_format, states[:j+1], ops[:j+1], box, exp_format, alt_descriptions, cft_args_map.values())
-                            out_d[f"prompt_{prompt_format}_{exp_format}"] = prompt
-                            out_d["annotations"]["explanation"][f"prompt_{prompt_format}_{exp_format}"] = exp_annotations
-                            for cft_str, cft_prompt in zip(cft_args_map.keys(), cft_prompts):
-                                out_d[f"prompt_{prompt_format}_{exp_format}_counterfactual_{cft_str}"] = cft_prompt
-
+                    
                     out_f.write(json.dumps(out_d) + "\n")
                 prev_state = state
 
@@ -1440,7 +1212,7 @@ def main(args):
         splits = args.disjoint_object_splits.split(",")
         for split in splits:
             with open(
-                os.path.join(args.output_dir, f"{split}-disjoint-vocab-t5.jsonl"), "w"
+                    os.path.join(args.output_dir, f"{split}-disjoint-vocab-t5.jsonl"), "w"
             ) as disjoint_f, open(
                 os.path.join(args.output_dir, f"{split}-t5.jsonl")
             ) as test_f:
